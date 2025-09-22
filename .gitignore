@@ -14,3 +14,4 @@ artifacts/
 .Renviron
 config/paths.R
 *.html
+.DS_Store

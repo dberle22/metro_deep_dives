@@ -1,0 +1,15 @@
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+renv/library/
+data/
+artifacts/
+*.parquet
+*.gpkg
+*.shp
+*.tif
+*.zip
+.env
+.Renviron
+config/paths.R

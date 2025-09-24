@@ -29,10 +29,10 @@ get_env_path <- function(key) {
 # Expected keys in your .Renviron (project or user):
 # SILVER_CBSA, SILVER_COUNTY, GOLD_XWALK, GOLD_CBSA
 silver_cbsa_env <- get_env_path("SILVER_CBSA")
-silver_county_env  <- get_env_path("SILVER_COUNTY")
-gold_xwalk_env   <- get_env_path("GOLD_XWALK")
-gold_cbsa_env   <- get_env_path("GOLD_CBSA")
-gold_county_env   <- get_env_path("GOLD_COUNTY")
+silver_county_env <- get_env_path("SILVER_COUNTY")
+gold_xwalk_env <- get_env_path("GOLD_XWALK")
+gold_cbsa_env <- get_env_path("GOLD_CBSA")
+gold_county_env <- get_env_path("GOLD_COUNTY")
 
 # Set Parameters ----
 base_year <- 2023
@@ -54,7 +54,8 @@ county_gdp <- readr::read_csv(file.path(silver_county_env, "bea_county_gdp_summa
 county_inc <- readr::read_csv(file.path(silver_county_env, "bea_county_personal_income.csv"), show_col_types = FALSE) %>%
   janitor::clean_names() %>%
   dplyr::mutate(county_fips = as.character(geo_fips)) %>%
-  dplyr::select(county_fips, year, personal_income)
+  dplyr::select(county_fips, year, personal_income) %>%
+  dplyr::mutate(inc_thousands = personal_income / 1000)
 
 xwalk <- readr::read_csv(file.path(gold_xwalk_env, "cbsa_county_crosswalk.csv"), show_col_types = FALSE) %>%
   janitor::clean_names() %>%
@@ -136,13 +137,12 @@ cbsa_pop <- sum_by_cbsa(county_acs, pop_total_e, xwalk, years) %>%
 cbsa_gdp <- sum_by_cbsa(county_gdp, gdp_chained2017, xwalk, years) %>%
   dplyr::rename(gdp_thousands = gdp_chained2017)
 
-cbsa_inc <- sum_by_cbsa(county_inc, personal_income, xwalk, years) %>%
-  dplyr::rename(inc_thousands = personal_income)
+cbsa_inc <- sum_by_cbsa(county_inc, inc_thousands, xwalk, years)
 
 # Long data frame + metadata ----
 cbsa_const_long <- cbsa_pop %>%
-  dplyr::left_join(cbsa_gdp, by = c("cbsa_geoid","year")) %>%
   dplyr::left_join(cbsa_meta %>% select(-year), by = c("cbsa_geoid")) %>%
+  dplyr::left_join(cbsa_gdp, by = c("cbsa_geoid","year")) %>%
   dplyr::left_join(cbsa_inc, by = c("cbsa_geoid","year")) %>%
   dplyr::arrange(cbsa_geoid, year) %>%
   dplyr::mutate(

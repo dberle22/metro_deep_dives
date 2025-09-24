@@ -6,14 +6,14 @@ bench_summary <- function(df, method = c("metro_mean","pop_weighted")) {
       summarise(
         pop_chg_5y  = mean(pop_chg_5y,  na.rm=TRUE),
         gdp_chg_5y  = mean(gdp_chg_5y,  na.rm=TRUE),
-        gdp_per_cap_chg_5y = mean(gdp_per_cap_chg_5y,  na.rm=TRUE),
-        total_inc_chg_5y  = mean(total_inc_chg_5y,  na.rm=TRUE),
-        inc_per_cap_chg_5y = mean(inc_per_cap_chg_5y,  na.rm=TRUE),
+        gdp_per_cap_chg_5y = mean(gdp_pc_chg_5y,  na.rm=TRUE),
+        total_inc_chg_5y  = mean(inc_chg_5y,  na.rm=TRUE),
+        inc_per_cap_chg_5y = mean(inc_pc_chg_5y,  na.rm=TRUE),
         pop_cagr_5y = mean(pop_cagr_5y, na.rm=TRUE),
         gdp_cagr_5y = mean(gdp_cagr_5y, na.rm=TRUE),
-        gdp_per_cap_cagr_5y = mean(gdp_per_cap_cagr_5y,  na.rm=TRUE),
-        total_inc_cagr_5y = mean(total_inc_cagr_5y, na.rm=TRUE),
-        inc_per_cap_cagr_5y = mean(inc_per_cap_cagr_5y,  na.rm=TRUE)
+        gdp_per_cap_cagr_5y = mean(gdp_pc_cagr_5y,  na.rm=TRUE),
+        total_inc_cagr_5y = mean(inc_cagr_5y, na.rm=TRUE),
+        inc_per_cap_cagr_5y = mean(inc_pc_cagr_5y,  na.rm=TRUE)
       )
   } else {
     w <- df$population

@@ -23,3 +23,10 @@ extract_state_abbrev <- function(title){
   m <- str_match(title, ",\\s*([A-Z]{2})")[,2]
   m
 }
+
+# Get and expand env var path, return NA if unset or empty
+get_env_path <- function(key) {
+  val <- Sys.getenv(key, unset = "")
+  if (!nzchar(val)) return(NA_character_)
+  path.expand(val)
+}

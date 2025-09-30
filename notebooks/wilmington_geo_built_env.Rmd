@@ -160,3 +160,191 @@ tr_df <- tr_cbsa %>%
 
 ```
 
+```{r Core Metrics Functions}
+# --- 4) Core Metrics (stubs) -----------------------------------------------
+# (unchanged for now; these are optional extensions)
+compute_footprint <- function(cbsa, counties = NULL, places = NULL) {
+  cbsa_p <- project_and_measure(cbsa)
+  out <- tibble::tibble(
+    level = "cbsa",
+    id = cbsa_geoid,
+    name = metro_name,
+    area_km2 = geom_area_km2(cbsa_p)
+  )
+  if (!is.null(counties)) {
+    cnt_p <- project_and_measure(counties)
+    out <- bind_rows(out, cnt_p %>%
+      mutate(level = "county", id = .data$geoid, name = .data$name, area_km2 = geom_area_km2(cnt_p)) %>%
+      st_drop_geometry())
+  }
+  if (!is.null(places)) {
+    plc_p <- project_and_measure(places)
+    out <- bind_rows(out, plc_p %>%
+      mutate(level = "place", id = .data$geoid, name = .data$name, area_km2 = geom_area_km2(plc_p)) %>%
+      st_drop_geometry())
+  }
+  out
+}
+
+compute_street_density <- function(boundary, roads, zones = c("cbsa", "county", "place"), hex_km = 1) {
+  b_p <- project_and_measure(boundary)
+  r_p <- project_and_measure(roads)
+
+  results <- list()
+
+  inter <- st_intersection(r_p, b_p)
+  road_km <- geom_length_km(inter)
+  area_km2 <- geom_area_km2(b_p)
+  results$cbsa <- tibble::tibble(level = "cbsa", id = cbsa_geoid, road_km = sum(road_km, na.rm = TRUE), area_km2 = area_km2, road_km_per_km2 = sum(road_km, na.rm = TRUE) / area_km2)
+
+  hex <- make_hex_grid(boundary, cell_km = hex_km) %>% mutate(zone_id = hex_id)
+  hex_p <- hex
+  inter_h <- st_intersection(r_p, hex_p)
+  df_h <- inter_h %>% mutate(len_km = geom_length_km(inter_h)) %>% st_drop_geometry() %>%
+    group_by(zone_id) %>% summarize(road_km = sum(len_km, na.rm = TRUE), .groups = "drop") %>%
+    left_join(hex_p %>% mutate(area_km2 = geom_area_km2(hex_p)) %>% st_drop_geometry(), by = "zone_id") %>%
+    mutate(road_km_per_km2 = road_km / area_km2)
+  results$hex <- df_h
+
+  results
+}
+
+compute_builtup_ratio <- function(boundary, buildings, hex_km = 1) {
+  b_p <- project_and_measure(boundary)
+  bd_p <- project_and_measure(buildings)
+  hex <- make_hex_grid(boundary, cell_km = hex_km) %>% mutate(zone_id = hex_id)
+  hex_p <- hex
+  inter <- st_intersection(bd_p, hex_p)
+  df <- inter %>% mutate(area_km2 = geom_area_km2(inter)) %>% st_drop_geometry() %>%
+    group_by(zone_id) %>% summarize(builtup_km2 = sum(area_km2, na.rm = TRUE), .groups = "drop") %>%
+    left_join(hex_p %>% mutate(total_km2 = geom_area_km2(hex_p)) %>% st_drop_geometry(), by = "zone_id") %>%
+    mutate(builtup_share = builtup_km2 / total_km2)
+  df
+}
+
+compute_landuse_mix <- function(boundary, landuse_polys, category_col = "landuse", hex_km = 1) {
+  b_p <- project_and_measure(boundary)
+  lu_p <- project_and_measure(landuse_polys)
+  hex <- make_hex_grid(boundary, cell_km = hex_km) %>% mutate(zone_id = hex_id)
+  hex_p <- hex
+  inter <- st_intersection(lu_p, hex_p)
+  df <- inter %>% mutate(area_km2 = geom_area_km2(inter)) %>% st_drop_geometry() %>%
+    group_by(zone_id, .data[[category_col]]) %>%
+    summarize(area_km2 = sum(area_km2, na.rm = TRUE), .groups = "drop") %>%
+    group_by(zone_id) %>% mutate(share = area_km2 / sum(area_km2, na.rm = TRUE)) %>% ungroup()
+  df
+}
+```
+
+```{r Visuals}
+md_theme <- function() {
+  theme_minimal(base_size = 11) +
+    theme(axis.text = element_blank(), axis.title = element_blank(), panel.grid = element_blank())
+}
+
+plot_density_map <- function(tr_sf, cbsa_sf, title) {
+  ggplot() +
+    geom_sf(data = tr_sf, aes(fill = density), color = NA) +
+    geom_sf(data = cbsa_sf, fill = NA, color = "black", linewidth = 0.4) +
+    scale_fill_viridis_c(option = "magma", trans = "sqrt", na.value = "grey90", name = "People / km²") +
+    labs(title = title) + md_theme()
+}
+
+plot_transport_overlay <- function(tr_sf, cbsa_sf, bbox_longlat, highway_classes = c("motorway","trunk","primary","secondary"), title = NULL) {
+  q <- opq(bbox = bbox_longlat) %>% add_osm_feature(key = "highway", value = highway_classes)
+  roads <- osmdata_sf(q)
+  roads_lines <- bind_rows(
+    roads$osm_lines %>% mutate(class = highway),
+    st_cast(roads$osm_multilines, "LINESTRING") %>% mutate(class = highway)
+  ) %>% st_intersection(st_transform(cbsa_sf, crs_longlat)) %>% st_transform(crs_equal_area)
+
+  ggplot() +
+    geom_sf(data = tr_sf, fill = "grey97", color = NA) +
+    geom_sf(data = cbsa_sf, fill = NA, color = "black", linewidth = 0.4) +
+    geom_sf(data = roads_lines, aes(linetype = class), linewidth = 0.4, color = "grey20", alpha = 0.9) +
+    scale_linetype_manual(values = c(motorway = "solid", trunk = "solid", primary = "longdash", secondary = "dotted")) +
+    labs(title = title, linetype = "Road class") + md_theme()
+}
+
+plot_commute_flows <- function(crosswalk_df, cbsa_id, year) {
+  cbsa_id <- as.character(cbsa_id)
+  year    <- as.integer(year)
+
+  # Column-tolerant selection (mirrors get_cbsa_states)
+  nm <- names(crosswalk_df)
+  cbsa_col   <- dplyr::first(intersect(c("cbsa_code","cbsa_geoid","cbsa","cbsa_fips"), nm))
+  county_col <- dplyr::first(intersect(c("county_fips","county_geoid","county","fips","cnty_fips","county_code"), nm))
+  year_col   <- dplyr::first(intersect(c("year","yr"), nm))
+  if (is.na(cbsa_col) || is.na(county_col) || is.na(year_col)) {
+    stop("crosswalk must contain CBSA + county + year columns. Looked for: cbsa_code/cbsa_geoid, county_* (fips/geoid/code), year/yr.")
+  }
+
+  xw <- crosswalk_df %>%
+    dplyr::mutate(
+      !!cbsa_col := as.character(.data[[cbsa_col]]),
+      !!year_col := as.integer(.data[[year_col]])
+    ) %>%
+    dplyr::filter(.data[[cbsa_col]] == cbsa_id, .data[[year_col]] == year)
+
+  if (!nrow(xw)) return(NULL)
+
+  # Normalize county key to 5-digit FIPS for LODES (expects 5-digit in h_county/w_county)
+  co_col <- county_col
+  co_vec <- xw[[co_col]]
+  co_vec <- as.character(co_vec)
+  # If we only have 3-digit county codes, try to prefix with state FIPS from the same row.
+  if (all(nchar(co_vec) == 3)) {
+    state_codes <- substr(co_vec, 1, 0) # placeholder; we need state separately
+    # Try derive state from any available state column; else from cbsa states function
+    state_col <- dplyr::first(intersect(c("state_fips","state","st","state_code"), nm))
+    if (!is.na(state_col)) {
+      st_vec <- as.character(xw[[state_col]])
+    } else {
+      # fall back to computing state list and using first state (works for single-state CBSAs)
+      st_list <- get_cbsa_states(cbsa_id, crosswalk_df, year)
+      st_vec <- rep(st_list[1], length(co_vec))
+    }
+    co_vec <- paste0(st_vec, stringr::str_pad(co_vec, width = 3, pad = "0"))
+  }
+
+  co <- tibble::tibble(county_fips5 = co_vec) %>% dplyr::distinct()
+  if (!nrow(co)) return(NULL)
+
+  st_abbr <- unique(substr(co$county_fips5, 1, 2))
+  lodes_list <- purrr::map(st_abbr, ~ tryCatch(get_lodes(state = .x, year = year, lodes_type = "od", job_type = "JT00", segment = "S000", agg_geo = "county"), error = function(e) NULL))
+  lodes <- list_rbind(purrr::compact(lodes_list))
+  if (!nrow(lodes)) return(NULL)
+
+  inflow <- lodes %>% dplyr::filter(h_county %in% co$county_fips5, !w_county %in% co$county_fips5) %>% dplyr::summarise(commuters = sum(S000, na.rm = TRUE)) %>% dplyr::mutate(type = "Inflow: live outside, work in CBSA")
+  outflow <- lodes %>% dplyr::filter(!h_county %in% co$county_fips5, w_county %in% co$county_fips5) %>% dplyr::summarise(commuters = sum(S000, na.rm = TRUE)) %>% dplyr::mutate(type = "Outflow: live in CBSA, work outside")
+  internal <- lodes %>% dplyr::filter(h_county %in% co$county_fips5, w_county %in% co$county_fips5) %>% dplyr::summarise(commuters = sum(S000, na.rm = TRUE)) %>% dplyr::mutate(type = "Internal: live & work in CBSA")
+  commute_tbl <- dplyr::bind_rows(inflow, outflow, internal)
+
+  p <- ggplot2::ggplot(commute_tbl, ggplot2::aes(x = type, y = commuters, fill = type)) +
+    ggplot2::geom_col(width = 0.65) +
+    ggplot2::scale_y_continuous(labels = scales::label_number(scale_cut = scales::cut_short_scale())) +
+    ggplot2::scale_fill_viridis_d(option = "viridis", end = 0.9, guide = "none") +
+    ggplot2::labs(title = glue::glue("{metro_name}: Commute Flows (LEHD LODES)"), x = NULL, y = "Workers") +
+    ggplot2::theme_minimal(base_size = 11) +
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 10, hjust = 1))
+
+  list(plot = p, summary = commute_tbl)
+}
+```
+
+```{r Density}
+# 1) Density map
+p_density <- plot_density_map(tr_df, cbsa_g, title = glue("{metro_name}: Tract Population Density"))
+
+p_density
+```
+```{r Transport Overlay}
+cb_longlat <- st_transform(cbsa_g, crs_longlat)
+transport_bbox <- st_bbox(cb_longlat)
+
+p_transport <- plot_transport_overlay(tr_df, cbsa_g, bbox_longlat = transport_bbox, title = glue("{metro_name}: Major Roads & Freeways"))
+
+p_transport
+
+```
+

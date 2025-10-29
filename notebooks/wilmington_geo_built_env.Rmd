@@ -32,6 +32,7 @@ if (file.exists(".Renviron")) readRenviron(".Renviron")
 # Set paths
 gold_xwalk_path <- get_env_path("GOLD_XWALK")
 acs_tract_path <- get_env_path("SILVER_TRACT")
+output_path <- get_env_path("OUTPUTS")
 
 # Set Params
 target_geoid <- "48900"
@@ -121,7 +122,7 @@ make_breaks <- function(x, k = 5, style = "quantile") {
 
 ```
 
-
+# Load & Clean Data
 ```{r Load & Clean Data}
 # CBSA <> County Crosswalk
 cbsa_county_crosswalk <- readr::read_csv(paste0(gold_xwalk_path, "/cbsa_county_crosswalk.csv"), show_col_types = FALSE) %>%
@@ -159,6 +160,8 @@ tr_df <- tr_cbsa %>%
   )
 
 ```
+
+# Core Metrics Functions
 
 ```{r Core Metrics Functions}
 # --- 4) Core Metrics (stubs) -----------------------------------------------
@@ -242,28 +245,13 @@ md_theme <- function() {
     theme(axis.text = element_blank(), axis.title = element_blank(), panel.grid = element_blank())
 }
 
-plot_density_map <- function(tr_sf, cbsa_sf, title) {
-  ggplot() +
-    geom_sf(data = tr_sf, aes(fill = density), color = NA) +
-    geom_sf(data = cbsa_sf, fill = NA, color = "black", linewidth = 0.4) +
-    scale_fill_viridis_c(option = "magma", trans = "sqrt", na.value = "grey90", name = "People / km²") +
-    labs(title = title) + md_theme()
-}
-
-plot_transport_overlay <- function(tr_sf, cbsa_sf, bbox_longlat, highway_classes = c("motorway","trunk","primary","secondary"), title = NULL) {
-  q <- opq(bbox = bbox_longlat) %>% add_osm_feature(key = "highway", value = highway_classes)
-  roads <- osmdata_sf(q)
-  roads_lines <- bind_rows(
-    roads$osm_lines %>% mutate(class = highway),
-    st_cast(roads$osm_multilines, "LINESTRING") %>% mutate(class = highway)
-  ) %>% st_intersection(st_transform(cbsa_sf, crs_longlat)) %>% st_transform(crs_equal_area)
-
-  ggplot() +
-    geom_sf(data = tr_sf, fill = "grey97", color = NA) +
-    geom_sf(data = cbsa_sf, fill = NA, color = "black", linewidth = 0.4) +
-    geom_sf(data = roads_lines, aes(linetype = class), linewidth = 0.4, color = "grey20", alpha = 0.9) +
-    scale_linetype_manual(values = c(motorway = "solid", trunk = "solid", primary = "longdash", secondary = "dotted")) +
-    labs(title = title, linetype = "Road class") + md_theme()
+white_bg <- function() {
+  theme(
+    plot.background   = element_rect(fill = "white", color = NA),
+    panel.background  = element_rect(fill = "white", color = NA),
+    legend.background = element_rect(fill = "white", color = NA),
+    legend.key        = element_rect(fill = "white", color = NA)
+  )
 }
 
 plot_commute_flows <- function(crosswalk_df, cbsa_id, year) {
@@ -332,19 +320,533 @@ plot_commute_flows <- function(crosswalk_df, cbsa_id, year) {
 }
 ```
 
-```{r Density}
+# Density
+
+```{r Density Plot Function}
+plot_density_map <- function(tr_sf, cbsa_sf, title) {
+  ggplot() +
+    geom_sf(data = tr_sf, aes(fill = density), color = NA) +
+    geom_sf(data = cbsa_sf, fill = NA, color = "black", linewidth = 0.4) +
+    # Green → Yellow → Red scale (sqrt transform) commonly used for density
+    scale_fill_gradientn(colours = c("#1a9850", "#fee08b", "#d73027"),
+                         trans = "sqrt", na.value = "grey90", name = "People / km²") +
+    labs(title = title) + 
+    md_theme() + 
+    white_bg()
+}
+```
+
+
+```{r Density Map}
 # 1) Density map
 p_density <- plot_density_map(tr_df, cbsa_g, title = glue("{metro_name}: Tract Population Density"))
 
 p_density
+
+# Export to Outputs folder
+ggsave(paste0(output_path, "/geography_built_form/pop_density.png")
+       , p_density,
+       width = 12, height = 8, dpi = 300,
+       bg = "white",
+       device = ragg::agg_png)
 ```
-```{r Transport Overlay}
-cb_longlat <- st_transform(cbsa_g, crs_longlat)
-transport_bbox <- st_bbox(cb_longlat)
+# Roads & Transport
 
-p_transport <- plot_transport_overlay(tr_df, cbsa_g, bbox_longlat = transport_bbox, title = glue("{metro_name}: Major Roads & Freeways"))
+```{r Classify Roads from TIGER}
+# --- B) Classifier ----------------------------------------------------------
+# What it does: Labels TIGER roads with human-friendly classes using MTFCC (county) or RTTYP (primary)
+# Why: enables filtering (e.g., arterials only) and cleaner legends with hierarchies
+classify_tiger_roads <- function(roads_sf, layer = c("county","primary")) {
+  # Normalize names once so downstream logic is stable
+  roads_sf <- janitor::clean_names(roads_sf)
+  layer <- match.arg(layer)
+  nms <- names(roads_sf)
 
-p_transport
+  if (layer == "county") {
+    if ("mtfcc" %in% nms) {
+      roads_sf <- roads_sf %>%
+        dplyr::mutate(
+          mtfcc = as.character(.data$mtfcc),
+          class = dplyr::case_when(
+            mtfcc == "S1100" ~ "primary",
+            mtfcc == "S1200" ~ "secondary",
+            mtfcc == "S1400" ~ "local",
+            mtfcc == "S1630" ~ "ramp",
+            mtfcc == "S1640" ~ "service",
+            mtfcc == "S1740" ~ "private",
+            mtfcc == "S1500" ~ "trail",
+            TRUE ~ "road"
+          )
+        )
+    } else {
+      # Fallback to RTTYP if MTFCC missing
+      roads_sf <- roads_sf %>%
+        dplyr::mutate(
+          class = if ("rttyp" %in% nms) as.character(.data$rttyp) else "road",
+          class = dplyr::recode(class, I = "primary", U = "primary", S = "secondary", .default = "road")
+        )
+    }
+  } else { # primary layer
+    if ("rttyp" %in% nms) {
+      roads_sf <- roads_sf %>%
+        dplyr::mutate(
+          class = dplyr::recode(as.character(.data$rttyp),
+                                I = "interstate", U = "us", S = "state",
+                                C = "county", M = "municipal", O = "other",
+                                .default = "primary")
+        )
+    } else {
+      roads_sf <- roads_sf %>% dplyr::mutate(class = "primary")
+    }
+  }
+  roads_sf
+}
 
+```
+
+```{r Fetch Roads}
+# --- C) Data fetch helpers --------------------------------------------------
+# 1) Primary roads for the CONUS clipped to CBSA
+get_primary_roads_cbsa <- function(cbsa_sf) {
+  tigris::primary_roads(class = "sf") %>%
+    sf::st_transform(sf::st_crs(cbsa_sf)) %>%
+    sf::st_make_valid() %>%
+    sf::st_intersection(sf::st_make_valid(cbsa_sf)) %>%
+    sf::st_transform(crs_equal_area) %>%
+    classify_tiger_roads(layer = "primary") %>%
+    clean_names()
+}
+
+# 2) County roads for all counties in CBSA (denser network)
+# Requires: cbsa_county_crosswalk with columns cbsa_code, county_geoid
+get_county_roads_cbsa <- function(cbsa_id, crosswalk_df, cbsa_sf) {
+  co5 <- crosswalk_df %>%
+    dplyr::filter(cbsa_code == cbsa_id) %>%
+    dplyr::transmute(co5 = stringr::str_pad(as.character(county_geoid), 5, pad = "0")) %>%
+    dplyr::distinct() %>%
+    dplyr::pull(co5)
+
+  rd_list <- purrr::map(co5, function(fips5) {
+    stc <- substr(fips5, 1, 2); coc <- substr(fips5, 3, 5)
+    tryCatch(tigris::roads(state = stc, county = coc, class = "sf"), error = function(e) NULL)
+  })
+  roads_all <- purrr::compact(rd_list)
+  if (length(roads_all) == 0) stop("No county roads returned from TIGER for this CBSA.")
+
+  do.call(rbind, roads_all) %>%                 # keep sf class
+    sf::st_transform(sf::st_crs(cbsa_sf)) %>%
+    sf::st_make_valid() %>%
+    sf::st_intersection(sf::st_make_valid(cbsa_sf)) %>%
+    sf::st_transform(crs_equal_area) %>%
+    classify_tiger_roads(layer = "county")
+}
+
+```
+
+```{r Plot Roads}
+# --- D) Plot helper ---------------------------------------------------------
+# Maps a road layer over density + CBSA outline with hierarchy styling
+plot_roads_layer <- function(layer_sf, title) {
+  ggplot() +
+    geom_sf(data = tr_df, aes(fill = density), color = NA) +
+    geom_sf(data = cbsa_g, fill = NA, color = "black", linewidth = 0.4) +
+    geom_sf(data = layer_sf, aes(linetype = class, linewidth = class), color = "grey20", alpha = 0.9) +
+    scale_fill_gradientn(colours = c("#1a9850", "#fee08b", "#d73027"),
+                         trans = "sqrt", na.value = "grey90", name = "People / km²") +
+    scale_linetype_manual(values = c(
+      interstate = "solid", us = "solid", state = "solid",
+      primary = "longdash", secondary = "dotdash", local = "solid",
+      ramp = "dotted", service = "dotted", private = "dashed", trail = "dashed", road = "solid"
+    ), guide = guide_legend(order = 2, title = "Road class")) +
+    scale_linewidth_manual(values = c(
+      interstate = 0.9, us = 0.8, state = 0.7,
+      primary = 0.8, secondary = 0.6, local = 0.3,
+      ramp = 0.5, service = 0.3, private = 0.25, trail = 0.2, road = 0.4
+    ), guide = "none") +
+    labs(title = title) + md_theme() + white_bg()
+}
+```
+
+```{r Test Roads Plots}
+# E1) PRIMARY roads (quick national layer)
+pri_roads_cbsa <- get_primary_roads_cbsa(cbsa_g)
+p_transport_primary <- plot_roads_layer(pri_roads_cbsa, glue::glue("{metro_name}: Major Roads (TIGER Primary)"))
+# print(p_transport_primary)
+# ggsave(file.path(path_outputs, glue::glue("transport_primary_{cbsa_geoid}_{cbsa_year_geo}.png")), p_transport_primary, width=9, height=6, dpi=300)
+
+# E2) COUNTY roads (denser)
+cty_roads_cbsa <- get_county_roads_cbsa(target_geoid, cbsa_county_crosswalk, cbsa_g)
+
+# Filter presets — choose level of detail for clean overview
+roads_presets <- list(
+  arterials_only       = c("primary","secondary"),
+  arterials_plus_ramps = c("primary","secondary","ramp"),
+  arterials_plus_local = c("primary","secondary","local")
+)
+
+# Build layered variants
+roads_arterials         <- cty_roads_cbsa %>% dplyr::filter(class %in% roads_presets$arterials_only)
+roads_arterials_ramps   <- cty_roads_cbsa %>% dplyr::filter(class %in% roads_presets$arterials_plus_ramps)
+roads_major_plus_local  <- cty_roads_cbsa %>% dplyr::filter(class %in% roads_presets$arterials_plus_local)
+
+# Plot the variants
+p_transport_art        <- plot_roads_layer(roads_arterials,        glue::glue("{metro_name}: Arterials Only (TIGER County)"))
+p_transport_art_ramps  <- plot_roads_layer(roads_arterials_ramps,  glue::glue("{metro_name}: Arterials + Ramps (TIGER County)"))
+p_transport_art_local  <- plot_roads_layer(roads_major_plus_local, glue::glue("{metro_name}: Arterials + Locals (TIGER County)"))
+
+p_transport_art
+p_transport_art_ramps
+p_transport_art_local
+
+# Export to Outputs folder
+ggsave(paste0(output_path, "/geography_built_form/local_roads.png")
+       , p_transport_art_local,
+       width = 12, height = 8, dpi = 300,
+       bg = "white",
+       device = ragg::agg_png)
+
+ggsave(paste0(output_path, "/geography_built_form/art_ramp_roads.png")
+       , p_transport_art_ramps,
+       width = 12, height = 8, dpi = 300,
+       bg = "white",
+       device = ragg::agg_png)
+
+# Example saves (uncomment as needed)
+# ggsave(file.path(path_outputs, glue::glue("transport_arterials_{cbsa_geoid}_{cbsa_year_geo}.png")),        p_transport_art,       width=9, height=6, dpi=300)
+# ggsave(file.path(path_outputs, glue::glue("transport_arterials_ramps_{cbsa_geoid}_{cbsa_year_geo}.png")), p_transport_art_ramps, width=9, height=6, dpi=300)
+# ggsave(file.path(path_outputs, glue::glue("transport_arterials_local_{cbsa_geoid}_{cbsa_year_geo}.png")), p_transport_art_local, width=9, height=6, dpi=300)
+
+# --- F) Optional: thin geometry for readability & speed --------------------
+# Simplify AFTER clipping, BEFORE plotting if desired (units are meters in EPSG:5070)
+roads_arterials_simpl <- roads_arterials %>% sf::st_simplify(dTolerance = 15)
+p_transport_art_simpl        <- plot_roads_layer(roads_arterials_simpl,        glue::glue("{metro_name}: Arterials Only (TIGER County)"))
+p_transport_art_simpl
+# p_transport_art_simpl <- plot_roads_layer(roads_arterials_simpl, glue::glue("{metro_name}: Arterials Only (Simplified)"))
+
+```
+
+# Commute Flows
+Goal: Summarize workers who (a) live outside & work in CBSA (inflow),
+     (b) live in CBSA & work outside (outflow), (c) live & work in CBSA (internal).
+Data: LEHD LODES OD files aggregated to county level via {lehdr}.
+Inputs we rely on:
+  - cbsa_county_crosswalk: columns cbsa_code, county_geoid (5-digit)
+  - cbsa_geoid: the target CBSA code (string)
+  - cbsa_year_geo (or a chosen LODES year)
+Notes:
+  - {lehdr} expects state postal codes; we derive them from the county FIPS.
+  - Crosswalk has no year, so we do not filter by year.
+```{r Helper Function}
+# 10A) Helper: FIPS (2-digit) → state postal
+fips_to_postal <- function(fips2_vec) {
+  # tigris::fips_codes carries state_code (2-digit) and state (postal)
+  lookup <- tigris::fips_codes %>% dplyr::distinct(state_code, state)
+  tibble::tibble(state_code = stringr::str_pad(as.character(fips2_vec), 2, pad = "0")) %>%
+    dplyr::left_join(lookup, by = "state_code") %>%
+    dplyr::pull(state) %>%
+    tolower()
+}
+```
+
+```{r Ingest LODES Data}
+# Helper: derive state postals from co5
+co5_to_postals <- function(co5) {
+  st_fips <- substr(co5, 1, 2)
+  tigris::fips_codes %>%
+    dplyr::distinct(state_code, state) %>%
+    dplyr::filter(state_code %in% st_fips) %>%
+    dplyr::pull(state) %>%
+    unique()
+}
+
+# Fetch LODES for CBSA; auto-pick first year with data
+fetch_lodes_cbsa <- function(cbsa_id, crosswalk_df, years_try = c(2023L, 2022L, 2021L, 2020L, 2019L)) {
+  co5 <- crosswalk_df %>%
+    dplyr::filter(cbsa_code == as.character(cbsa_id)) %>%
+    dplyr::transmute(co5 = stringr::str_pad(as.character(county_geoid), 5, pad = "0")) %>%
+    dplyr::distinct() %>%
+    dplyr::pull(co5)
+  if (length(co5) == 0) stop("Crosswalk returned no counties for this CBSA.")
+
+  st_postal_uc <- co5_to_postals(co5)        # e.g., "NC"
+  st_postal_lc <- tolower(st_postal_uc)      # lehdr expects lowercase
+
+  # probe years and pick first with rows
+  year_used <- NA_integer_
+  lodes <- NULL
+  for (yy in years_try) {
+    lst <- purrr::map(st_postal_lc, ~ tryCatch(
+      lehdr::grab_lodes(state = .x, year = yy, lodes_type = "od",
+                        job_type = "JT00", segment = "S000", agg_geo = "county"),
+      error = function(e) NULL))
+    df <- dplyr::bind_rows(purrr::compact(lst))
+    if (nrow(df) > 0) { lodes <- df; year_used <- yy; break }
+  }
+  if (is.na(year_used)) stop("No LODES rows found for any of: ", paste(years_try, collapse=","))
+
+  list(raw = lodes, co5 = co5, states = st_postal_uc, year_used = year_used)
+}
+
+# Summarize flows relative to CBSA counties
+summarize_commute_flows <- function(lodes, co5, metro_title = metro_name, year_used = NA_integer_) {
+  co_tbl <- tibble::tibble(co5 = co5)
+  inflow <- lodes %>% dplyr::filter(h_county %in% co_tbl$co5, !w_county %in% co_tbl$co5) %>%
+    dplyr::summarise(commuters = sum(S000, na.rm = TRUE)) %>%
+    dplyr::mutate(type = "Inflow: live outside, work in CBSA")
+  outflow <- lodes %>% dplyr::filter(!h_county %in% co_tbl$co5, w_county %in% co_tbl$co5) %>%
+    dplyr::summarise(commuters = sum(S000, na.rm = TRUE)) %>%
+    dplyr::mutate(type = "Outflow: live in CBSA, work outside")
+  internal <- lodes %>% dplyr::filter(h_county %in% co_tbl$co5, w_county %in% co_tbl$co5) %>%
+    dplyr::summarise(commuters = sum(S000, na.rm = TRUE)) %>%
+    dplyr::mutate(type = "Internal: live & work in CBSA")
+  commute_tbl <- dplyr::bind_rows(inflow, outflow, internal)
+  list(title = glue::glue("{metro_title}: Commute Flows (LEHD LODES {year_used})"), table = commute_tbl)
+}
+```
+
+```{r LODES Visuals}
+# Bar chart
+plot_commute_bars <- function(commute_summary, title = NULL) {
+  tb <- commute_summary
+  ggplot2::ggplot(tb, ggplot2::aes(x = type, y = commuters, fill = type)) +
+    ggplot2::geom_col(width = 0.65) +
+    ggplot2::scale_y_continuous(labels = scales::label_number(scale_cut = scales::cut_short_scale())) +
+    ggplot2::scale_fill_viridis_d(option = "viridis", end = 0.9, guide = "none") +
+    ggplot2::labs(title = title %||% "Commute Flows", x = NULL, y = "Workers") +
+    ggplot2::theme_minimal(base_size = 11) +
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 10, hjust = 1))
+}
+
+# Map of inflow/outflow origins/destinations by county
+# type = "inflow": counties where people LIVE outside but WORK inside CBSA (h outside, w inside)
+# type = "outflow": counties where people WORK outside but LIVE inside CBSA (w outside, h inside)
+plot_commute_map <- function(lodes, co5, cbsa_sf, type = c("inflow","outflow")) {
+  type <- match.arg(type)
+  st_postal_uc <- co5_to_postals(co5)
+
+  # pull counties geometries for involved states
+  cnt_list <- purrr::map(st_postal_uc, ~ tigris::counties(state = .x, year = cbsa_year_geo, class = "sf"))
+  counties_sf <- dplyr::bind_rows(cnt_list) %>% janitor::clean_names() %>%
+    dplyr::transmute(geoid = geoid, name = name, geometry)
+  counties_sf <- sf::st_transform(counties_sf, sf::st_crs(cbsa_sf))
+
+  # build counts per external county
+  co_tbl <- tibble::tibble(co5 = co5)
+  if (type == "inflow") {
+    flows <- lodes %>% dplyr::filter(!h_county %in% co_tbl$co5, w_county %in% co_tbl$co5) %>%
+      dplyr::group_by(h_county) %>% dplyr::summarise(commuters = sum(S000, na.rm = TRUE), .groups = "drop") %>%
+      dplyr::rename(geoid = h_county)
+    ttl <- glue::glue("{metro_name}: Inflow Origins by County (LODES {unique(lodes$year)} or {cbsa_year_geo})")
+  } else {
+    flows <- lodes %>% dplyr::filter(h_county %in% co_tbl$co5, !w_county %in% co_tbl$co5) %>%
+      dplyr::group_by(w_county) %>% dplyr::summarise(commuters = sum(S000, na.rm = TRUE), .groups = "drop") %>%
+      dplyr::rename(geoid = w_county)
+    ttl <- glue::glue("{metro_name}: Outflow Destinations by County (LODES {unique(lodes$year)} or {cbsa_year_geo})")
+  }
+
+  map_sf <- counties_sf %>% dplyr::left_join(flows, by = "geoid") %>%
+    dplyr::mutate(commuters = as.numeric(dplyr::coalesce(commuters, 0)))
+  cbsa_eq <- sf::st_transform(cbsa_sf, crs_equal_area)
+  map_eq  <- sf::st_transform(map_sf,  crs_equal_area)
+
+  # Guard: if all zeros, avoid sqrt transform + tell user via subtitle
+  max_comm <- suppressWarnings(max(map_eq$commuters, na.rm = TRUE))
+  use_sqrt <- is.finite(max_comm) && max_comm > 0
+
+  p <- ggplot2::ggplot() +
+    ggplot2::geom_sf(data = map_eq, ggplot2::aes(fill = commuters), color = NA) +
+    ggplot2::geom_sf(data = cbsa_eq, fill = NA, color = "black", linewidth = 0.6)
+
+  if (use_sqrt) {
+    p <- p + ggplot2::scale_fill_viridis_c(option = "magma", trans = "sqrt",
+            labels = scales::label_number(scale_cut = scales::cut_short_scale()), na.value = "grey95")
+  } else {
+    p <- p + ggplot2::scale_fill_viridis_c(option = "magma",
+            labels = scales::label_number(scale_cut = scales::cut_short_scale()), na.value = "grey95") +
+      ggplot2::labs(subtitle = "No non-zero flows found; showing zero map")
+  }
+
+  p + ggplot2::labs(title = ttl, fill = "Workers") + md_theme() + white_bg()
+}
+```
+
+```{r}
+plot_commute_map <- function(lodes, co5, cbsa_sf, type = c("inflow","outflow")) {
+  type <- match.arg(type)
+  st_postal_uc <- co5_to_postals(co5)
+
+  # counties layer
+  counties_sf <- purrr::map(st_postal_uc, ~ tigris::counties(state = .x, year = cbsa_year_geo, class = "sf")) %>%
+    dplyr::bind_rows() %>%
+    janitor::clean_names() %>%
+    dplyr::transmute(geoid = geoid, name = name, geometry) %>%
+    sf::st_transform(sf::st_crs(cbsa_sf))
+
+  co_tbl <- tibble::tibble(co5 = co5)
+  if (type == "inflow") {
+    flows <- lodes %>% dplyr::filter(!h_county %in% co_tbl$co5, w_county %in% co_tbl$co5) %>%
+      dplyr::group_by(h_county) %>% dplyr::summarise(commuters = sum(S000, na.rm = TRUE), .groups = "drop") %>%
+      dplyr::rename(geoid = h_county)
+    ttl <- glue::glue("{metro_name}: Inflow Origins by County (LODES {unique(lodes$year)})")
+  } else {
+    flows <- lodes %>% dplyr::filter(h_county %in% co_tbl$co5, !w_county %in% co_tbl$co5) %>%
+      dplyr::group_by(w_county) %>% dplyr::summarise(commuters = sum(S000, na.rm = TRUE), .groups = "drop") %>%
+      dplyr::rename(geoid = w_county)
+    ttl <- glue::glue("{metro_name}: Outflow Destinations by County (LODES {unique(lodes$year)})")
+  }
+
+  map_sf <- counties_sf %>% dplyr::left_join(flows, by = "geoid") %>%
+    dplyr::mutate(commuters = as.numeric(dplyr::coalesce(commuters, 0))) %>%
+    dplyr::filter(is.finite(commuters))
+
+  cbsa_eq <- sf::st_transform(cbsa_sf, crs_equal_area)
+  map_eq  <- sf::st_transform(map_sf,  crs_equal_area)
+
+  vmax <- suppressWarnings(max(map_eq$commuters, na.rm = TRUE)); if (!is.finite(vmax)) vmax <- 0
+  use_sqrt <- vmax > 0
+
+  p <- ggplot2::ggplot() +
+    ggplot2::geom_sf(data = map_eq, ggplot2::aes(fill = commuters), color = NA) +
+    ggplot2::geom_sf(data = cbsa_eq, fill = NA, color = "black", linewidth = 0.6)
+
+  if (use_sqrt) {
+    p <- p + ggplot2::scale_fill_gradientn(
+      colours = c("#1a9850", "#fee08b", "#d73027"),
+      trans   = "sqrt",
+      limits  = c(0, vmax),
+      oob     = scales::squish,
+      labels  = scales::label_comma(),
+      na.value = "grey95"
+    )
+  } else {
+    p <- p + ggplot2::scale_fill_gradientn(
+      colours = c("#1a9850", "#fee08b", "#d73027"),
+      limits  = c(0, vmax),
+      oob     = scales::squish,
+      labels  = scales::label_comma(),
+      na.value = "grey95"
+    ) + ggplot2::labs(subtitle = "No non-zero flows found; showing zero map")
+  }
+
+  p + ggplot2::labs(title = ttl, fill = "Workers") + md_theme() + white_bg()
+}
+```
+
+
+```{r Final Wrapper}
+# One-step wrapper
+build_commute_flows <- function(crosswalk_df, cbsa_id, years_try = c(2023L, 2022L, 2021L, 2020L, 2019L)) {
+  fetched <- fetch_lodes_cbsa(cbsa_id, crosswalk_df, years_try = years_try)
+  summ    <- summarize_commute_flows(fetched$raw, fetched$co5, metro_title = metro_name, year_used = fetched$year_used)
+  list(year_used = fetched$year_used, co5 = fetched$co5, states = fetched$states,
+       summary = summ$table, title = summ$title, raw = fetched$raw)
+}
+
+```
+
+```{r Create charts}
+lodes_res <- build_commute_flows(cbsa_county_crosswalk, target_geoid)
+
+p_commute <- plot_commute_bars(lodes_res$summary, title = lodes_res$title)
+
+p_commute
+# Export to Outputs folder
+ggsave(paste0(output_path, "/geography_built_form/commute_origin.png")
+       , p_commute,
+       width = 12, height = 8, dpi = 300,
+       bg = "white",
+       device = ragg::agg_png)
+
+
+
+p_in_map  <- plot_commute_map(lodes_res$raw, lodes_res$co5, cbsa_g, type = "inflow")
+
+p_in_map
+ggsave(paste0(output_path, "/geography_built_form/commute_inflows.png")
+       , p_in_map,
+       width = 12, height = 8, dpi = 300,
+       bg = "white",
+       device = ragg::agg_png)
+
+p_out_map <- plot_commute_map(lodes_res$raw, lodes_res$co5, cbsa_g, type = "outflow")
+
+p_out_map
+ggsave(paste0(output_path, "/geography_built_form/commute_outflows.png")
+       , p_out_map,
+       width = 12, height = 8, dpi = 300,
+       bg = "white",
+       device = ragg::agg_png)
+```
+
+```{r Create Top Inflow/Outflow for Bar Chart}
+# Helper: get county names for a set of FIPS (5-digit) by fetching the few states involved
+lookup_county_names <- function(fips5_vec) {
+  fips5_vec <- unique(as.character(fips5_vec))
+  st2 <- unique(substr(fips5_vec, 1, 2))
+  # map 2-digit FIPS -> postal
+  st_map <- tigris::fips_codes %>% dplyr::distinct(state_code, state) %>% dplyr::filter(state_code %in% st2)
+  st_postals <- st_map$state
+  # fetch county geometries for those states and return a lookup (data.frame)
+  cnt_list <- purrr::map(st_postals, ~ tigris::counties(state = .x, year = cbsa_year_geo, class = "sf"))
+  cnt <- dplyr::bind_rows(cnt_list) %>% janitor::clean_names() %>% dplyr::transmute(geoid = geoid, county_name = name)
+  # add state postal
+  cnt <- cnt %>% dplyr::mutate(state_fips = substr(geoid, 1, 2)) %>%
+    dplyr::left_join(st_map, by = c("state_fips" = "state_code")) %>%
+    dplyr::transmute(geoid, county_name, state = state)
+  sf::st_drop_geometry(cnt)
+}
+
+build_top_commute_tables <- function(lodes, co5, top_n = 10L) {
+  co_tbl <- tibble::tibble(co5 = co5)
+  inflow <- lodes %>% dplyr::filter(!h_county %in% co_tbl$co5, w_county %in% co_tbl$co5) %>%
+    dplyr::group_by(h_county) %>% dplyr::summarise(commuters = sum(S000, na.rm = TRUE), .groups = "drop") %>%
+    dplyr::rename(geoid = h_county)
+  outflow <- lodes %>% dplyr::filter(h_county %in% co_tbl$co5, !w_county %in% co_tbl$co5) %>%
+    dplyr::group_by(w_county) %>% dplyr::summarise(commuters = sum(S000, na.rm = TRUE), .groups = "drop") %>%
+    dplyr::rename(geoid = w_county)
+
+  geos <- unique(c(inflow$geoid, outflow$geoid))
+  lu <- lookup_county_names(geos)
+
+  inflow_l <- inflow %>% dplyr::left_join(lu, by = c("geoid" = "geoid")) %>%
+    dplyr::mutate(label = paste0(county_name, ", ", state)) %>%
+    dplyr::arrange(dplyr::desc(commuters)) %>% dplyr::slice_head(n = top_n)
+  outflow_l <- outflow %>% dplyr::left_join(lu, by = c("geoid" = "geoid")) %>%
+    dplyr::mutate(label = paste0(county_name, ", ", state)) %>%
+    dplyr::arrange(dplyr::desc(commuters)) %>% dplyr::slice_head(n = top_n)
+
+  list(inflow = inflow_l, outflow = outflow_l)
+}
+
+plot_top_commute_bars <- function(top_tab, title_in = "Top Inflow Counties", title_out = "Top Outflow Counties") {
+  lab_fun <- scales::label_number(scale_cut = scales::cut_short_scale())
+  p_in <- ggplot2::ggplot(top_tab$inflow, ggplot2::aes(x = reorder(label, commuters), y = commuters, fill = commuters)) +
+    ggplot2::geom_col(width = 0.7) +
+    ggplot2::coord_flip() +
+    ggplot2::scale_y_continuous(labels = lab_fun) +
+    ggplot2::scale_fill_gradientn(colours = c("#1a9850", "#fee08b", "#d73027"), guide = "none") +
+    ggplot2::labs(title = title_in, x = NULL, y = "Workers") + md_theme() + white_bg()
+
+  p_out <- ggplot2::ggplot(top_tab$outflow, ggplot2::aes(x = reorder(label, commuters), y = commuters, fill = commuters)) +
+    ggplot2::geom_col(width = 0.7) +
+    ggplot2::coord_flip() +
+    ggplot2::scale_y_continuous(labels = lab_fun) +
+    ggplot2::scale_fill_gradientn(colours = c("#1a9850", "#fee08b", "#d73027"), guide = "none") +
+    ggplot2::labs(title = title_out, x = NULL, y = "Workers") + md_theme() + white_bg()
+
+  list(inflow_plot = p_in, outflow_plot = p_out)
+}
+
+# Optional: combine with patchwork if available
+combine_side_by_side <- function(p_left, p_right) {
+  if (requireNamespace("patchwork", quietly = TRUE)) {
+    return(p_left + p_right)
+  } else if (requireNamespace("cowplot", quietly = TRUE)) {
+    return(cowplot::plot_grid(p_left, p_right, ncol = 2, rel_widths = c(1,1)))
+  } else {
+    warning("Neither patchwork nor cowplot available; returning list of plots.")
+    return(list(left = p_left, right = p_right))
+  }
+}
 ```
 

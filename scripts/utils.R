@@ -27,6 +27,7 @@ source(here::here("R", "benchmark_summary.R"))
 source(here::here("R", "generic_functions.R"))
 source(here::here("R", "rebase_cbsa_from_counties.R"))
 source(here::here("R", "acs_ingest.R"))
+source(here::here("R", "standardize_acs_df.R"))
 
 # Make sure we're reading from the project Renviron
 if (file.exists(".Renviron")) readRenviron(".Renviron")

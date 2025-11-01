@@ -26,6 +26,7 @@ acs_v23 <- load_variables(year = '2023', dataset = "acs5", cache = TRUE)
 # Create our Vars mapping ----
 vars_age_sex <- c(
   pop_total              = "B01001_001",
+  median_age.            = "B01002_001",
   pop_male_total         = "B01001_002",
   pop_age_male_under5    = "B01001_003",
   pop_age_male_5_9       = "B01001_004",

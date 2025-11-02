@@ -29,16 +29,16 @@ db_path <- paste0(data, "/duckdb", "/metro_deep_dive.duckdb")
 con <- dbConnect(duckdb::duckdb(), dbdir = db_path, read_only = FALSE)
 
 # 2. Read in our Staging Data to R Data Frames ----
-us_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_labor_us")
-region_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_labor_region")
-division_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_labor_division")
-state_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_labor_state")
-county_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_labor_county")
-place_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_labor_place")
-zcta_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_labor_zcta")
-tract_fl_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_labor_tract_fl")
-tract_ga_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_labor_tract_ga")
-tract_nc_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_labor_tract_nc")
+us_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_migration_us")
+region_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_migration_region")
+division_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_migration_division")
+state_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_migration_state")
+county_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_migration_county")
+place_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_migration_place")
+zcta_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_migration_zcta")
+tract_fl_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_migration_tract_fl")
+tract_ga_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_migration_tract_ga")
+tract_nc_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_migration_tract_nc")
 
 # 3. Add Geo Level to each table, drop _M, rename columns ----
 us_acs_clean <- standardize_acs_df(us_acs_stage, "US", drop_e = FALSE)
@@ -72,33 +72,36 @@ all_acs_clean <- dplyr::bind_rows(
 )
 
 # 5. Compute buckets and select main columns ----
-labor_silver_kpi <- all_acs_clean %>%
+migration_silver_kpi <- all_acs_clean %>%
   mutate(
-    median_hh_income  = median_hh_incomeE,
-    per_capita_income = per_capita_incomeE,
-    pov_universe      = pov_universeE,
-    pov_below         = pov_belowE,
-    pov_rate          = pov_below / pov_universe
+    mig_total          = mig_totalE,
+    mig_same_house     = mig_same_houseE,
+    mig_moved_same_cnty= mig_moved_same_cntyE,
+    mig_moved_same_st  = mig_moved_same_stE,
+    mig_moved_diff_st  = mig_moved_diff_stE,
+    mig_moved_abroad   = mig_moved_abroadE
   ) %>%
-  # optional distribution shares
   mutate(
-    pct_hh_lt25k   = (hh_inc_lt10kE + hh_inc_10k_15kE + hh_inc_15k_20kE + hh_inc_20k_25kE) / hh_inc_totalE,
-    pct_hh_25k_50k = (hh_inc_25k_30kE + hh_inc_30k_35kE + hh_inc_35k_40kE + hh_inc_40k_45kE + hh_inc_45k_50kE) / hh_inc_totalE,
-    pct_hh_50k_100k = (hh_inc_50k_60kE + hh_inc_60k_75kE + hh_inc_75k_100kE) / hh_inc_totalE,
-    pct_hh_100k_plus = (hh_inc_100k_125kE + hh_inc_125k_150kE + hh_inc_150k_200kE + hh_inc_200k_plusE) / hh_inc_totalE
+    pct_same_house      = mig_same_house / mig_total,
+    pct_moved_same_cnty = mig_moved_same_cnty / mig_total,
+    pct_moved_same_st   = mig_moved_same_st / mig_total,
+    pct_moved_diff_st   = mig_moved_diff_st / mig_total,
+    pct_moved_abroad    = mig_moved_abroad / mig_total
   ) %>%
   select(
     geo_level, geo_id, geo_name, year,
-    median_hh_income, per_capita_income,
-    pov_universe, pov_below, pov_rate,
-    pct_hh_lt25k, pct_hh_25k_50k, pct_hh_50k_100k, pct_hh_100k_plus
+    mig_total,
+    mig_same_house, mig_moved_same_cnty,
+    mig_moved_same_st, mig_moved_diff_st, mig_moved_abroad,
+    pct_same_house, pct_moved_same_cnty,
+    pct_moved_same_st, pct_moved_diff_st, pct_moved_abroad
   )
 
 # 6. Materialize to Silver DB ----
-DBI::dbWriteTable(con, DBI::Id(schema="silver", table="labor_base"),
+DBI::dbWriteTable(con, DBI::Id(schema="silver", table="migration_base"),
                   all_acs_clean, overwrite = TRUE)
 
-DBI::dbWriteTable(con, DBI::Id(schema="silver", table="labor_kpi"),
-                  labor_silver_kpi, overwrite = TRUE)
+DBI::dbWriteTable(con, DBI::Id(schema="silver", table="migration_kpi"),
+                  migration_silver_kpi, overwrite = TRUE)
 
 dbDisconnect(con, shutdown = TRUE)

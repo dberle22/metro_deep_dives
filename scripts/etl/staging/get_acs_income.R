@@ -55,7 +55,10 @@ vars <- c(
   hh_inc_100k_125k   = "B19001_014",
   hh_inc_125k_150k   = "B19001_015",
   hh_inc_150k_200k   = "B19001_016",
-  hh_inc_200k_plus   = "B19001_017"
+  hh_inc_200k_plus   = "B19001_017",
+  
+  # Gini Index
+  gini_index         = "B19083_001"
 )
 
 # Ingest Data ----

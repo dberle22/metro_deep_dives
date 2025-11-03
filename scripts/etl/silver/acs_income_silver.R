@@ -78,7 +78,8 @@ income_silver_kpi <- all_acs_clean %>%
     per_capita_income = per_capita_incomeE,
     pov_universe      = pov_universeE,
     pov_below         = pov_belowE,
-    pov_rate          = pov_below / pov_universe
+    pov_rate          = pov_below / pov_universe,
+    gini_index        = gini_indexE
   ) %>%
   # optional distribution shares
   mutate(
@@ -90,7 +91,7 @@ income_silver_kpi <- all_acs_clean %>%
   select(
     geo_level, geo_id, geo_name, year,
     median_hh_income, per_capita_income,
-    pov_universe, pov_below, pov_rate,
+    pov_universe, pov_below, pov_rate, gini_index,
     pct_hh_lt25k, pct_hh_25k_50k, pct_hh_50k_100k, pct_hh_100k_plus
   )
 

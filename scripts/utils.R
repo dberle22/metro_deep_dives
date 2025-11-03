@@ -15,6 +15,7 @@ library(patchwork)
 library(viridis)
 library(ggrepel)
 library(tidycensus)
+library(readxl)
 
 # Reproducibility ----
 set.seed(42)

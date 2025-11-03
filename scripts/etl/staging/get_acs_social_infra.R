@@ -26,23 +26,38 @@ acs_v15 <- load_variables(year = '2015', dataset = "acs5", cache = TRUE)
 acs_v12 <- load_variables(year = '2012', dataset = "acs5", cache = TRUE)
 
 
-# Migration
+# Social Infra
 vars <- c(
-  # Migration
-  mig_total          = "B07003_001",
-  mig_same_house     = "B07003_004",
-  mig_moved_same_cnty= "B07003_007",
-  mig_moved_same_st  = "B07003_010",
-  mig_moved_diff_st  = "B07003_013",
-  mig_moved_abroad   = "B07003_016",
+  # A) Household / family (B11001)
+  hh_total        = "B11001_001",
+  hh_family       = "B11001_002",
+  hh_married      = "B11001_003",
+  hh_other_family = "B11001_004",
+  hh_nonfamily    = "B11001_007",
+  hh_nonfam_alone        = "B11001_008",
+  hh_nonfam_not_alone    = "B11001_009",
   
-  # Nativity
-  pop_nativity_total = "B05002_001",
-  pop_native         = "B05002_002",
-  pop_foreign_born   = "B05002_013",
-  pop_foreign_born_citizen   = "B05002_014"
+  # B) Internet / broadband (B28002) # Historical Data is not full
+  # inet_total_hh   = "B28002_001",
+  # inet_no_access  = "B28002_013",
+  # inet_subscription_accss = "B28002_003",
+  # inet_subscription_broadband  = "B28002_004",
+  # inet_no_subscription_access  = "B28002_012",
   
-  # Foreign Born Non Citizen Changes
+  # C) Health insurance (B27010)
+  ins_total       = "B27010_001",
+  ins_u19_one_plan     = "B27010_003",
+  ins_u19_two_plans     = "B27010_010",
+  ins_19_34_uncovered   = "B27010_017",
+  ins_19_34_one_plan     = "B27010_019",
+  ins_19_34_two_plans     = "B27010_026",
+  ins_19_34_uncovered   = "B27010_033",
+  ins_35_64_one_plan     = "B27010_035",
+  ins_35_64_two_plans     = "B27010_042",
+  ins_35_64_uncovered   = "B27010_050",
+  ins_65u_one_plan     = "B27010_052",
+  ins_65u_two_plans     = "B27010_058",
+  ins_65u_uncovered   = "B27010_066"
 )
 
 # Ingest Data ----
@@ -58,7 +73,7 @@ us_acs_raw <- acs_ingest(
 
 # Name tables Source <> KPI <> Gran
 dbWriteTable(con, 
-             DBI::Id(schema = "staging", table = "acs_migration_us"),
+             DBI::Id(schema = "staging", table = "acs_social_infra_us"),
              us_acs_raw, 
              overwrite = TRUE)
 
@@ -73,7 +88,7 @@ region_acs_raw <- acs_ingest(
 
 # Name tables Source <> KPI <> Gran
 dbWriteTable(con, 
-             DBI::Id(schema = "staging", table = "acs_migration_region"),
+             DBI::Id(schema = "staging", table = "acs_social_infra_region"),
              region_acs_raw, 
              overwrite = TRUE)
 
@@ -89,7 +104,7 @@ division_acs_raw <- acs_ingest(
 
 # Name tables Source <> KPI <> Gran
 dbWriteTable(con, 
-             DBI::Id(schema = "staging", table = "acs_migration_division"),
+             DBI::Id(schema = "staging", table = "acs_social_infra_division"),
              division_acs_raw, 
              overwrite = TRUE)
 
@@ -104,7 +119,7 @@ state_acs_raw <- acs_ingest(
 
 # Name tables Source <> KPI <> Gran
 dbWriteTable(con, 
-             DBI::Id(schema = "staging", table = "acs_migration_state"),
+             DBI::Id(schema = "staging", table = "acs_social_infra_state"),
              state_acs_raw, 
              overwrite = TRUE)
 
@@ -119,7 +134,7 @@ county_acs_raw <- acs_ingest(
 
 # Name tables Source <> KPI <> Gran
 dbWriteTable(con, 
-             DBI::Id(schema = "staging", table = "acs_migration_county"),
+             DBI::Id(schema = "staging", table = "acs_social_infra_county"),
              county_acs_raw, 
              overwrite = TRUE)
 
@@ -134,7 +149,7 @@ zcta_acs_raw <- acs_ingest(
 
 # Name tables Source <> KPI <> Gran
 dbWriteTable(con, 
-             DBI::Id(schema = "staging", table = "acs_migration_zcta"),
+             DBI::Id(schema = "staging", table = "acs_social_infra_zcta"),
              zcta_acs_raw, 
              overwrite = TRUE)
 
@@ -149,7 +164,7 @@ place_acs_raw <- acs_ingest(
 
 # Name tables Source <> KPI <> Gran
 dbWriteTable(con, 
-             DBI::Id(schema = "staging", table = "acs_migration_place"),
+             DBI::Id(schema = "staging", table = "acs_social_infra_place"),
              place_acs_raw, 
              overwrite = TRUE)
 
@@ -166,7 +181,7 @@ tract_fl_acs_raw <- acs_ingest(
 
 # Name tables Source <> KPI <> Gran
 dbWriteTable(con, 
-             DBI::Id(schema = "staging", table = "acs_migration_tract_fl"),
+             DBI::Id(schema = "staging", table = "acs_social_infra_tract_fl"),
              tract_fl_acs_raw, 
              overwrite = TRUE)
 
@@ -182,7 +197,7 @@ tract_nc_acs_raw <- acs_ingest(
 
 # Name tables Source <> KPI <> Gran
 dbWriteTable(con, 
-             DBI::Id(schema = "staging", table = "acs_migration_tract_nc"),
+             DBI::Id(schema = "staging", table = "acs_social_infra_tract_nc"),
              tract_nc_acs_raw, 
              overwrite = TRUE)
 
@@ -198,7 +213,7 @@ tract_ga_acs_raw <- acs_ingest(
 
 # Name tables Source <> KPI <> Gran
 dbWriteTable(con, 
-             DBI::Id(schema = "staging", table = "acs_migration_tract_ga"),
+             DBI::Id(schema = "staging", table = "acs_social_infra_tract_ga"),
              tract_ga_acs_raw, 
              overwrite = TRUE)
 

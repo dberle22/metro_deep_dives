@@ -74,19 +74,34 @@ all_acs_clean <- dplyr::bind_rows(
 # 5. Compute buckets and select main columns ----
 migration_silver_kpi <- all_acs_clean %>%
   mutate(
+    # Migration
     mig_total          = mig_totalE,
     mig_same_house     = mig_same_houseE,
     mig_moved_same_cnty= mig_moved_same_cntyE,
     mig_moved_same_st  = mig_moved_same_stE,
     mig_moved_diff_st  = mig_moved_diff_stE,
-    mig_moved_abroad   = mig_moved_abroadE
+    mig_moved_abroad   = mig_moved_abroadE,
+    
+    # Nativity
+    pop_nativity_total = pop_nativity_totalE,
+    pop_native = pop_nativeE,
+    pop_foreign_born = pop_foreign_bornE,
+    pop_foreign_born_citizen = pop_foreign_born_citizenE,
+    pop_foreign_born_noncitizen = pop_foreign_born - pop_foreign_born_citizen
+    
   ) %>%
   mutate(
+    # Migration
     pct_same_house      = mig_same_house / mig_total,
     pct_moved_same_cnty = mig_moved_same_cnty / mig_total,
     pct_moved_same_st   = mig_moved_same_st / mig_total,
     pct_moved_diff_st   = mig_moved_diff_st / mig_total,
-    pct_moved_abroad    = mig_moved_abroad / mig_total
+    pct_moved_abroad    = mig_moved_abroad / mig_total,
+    
+    # Nativity
+    pct_native = pop_native / pop_nativity_total,
+    pct_foreign_born = pop_foreign_born / pop_nativity_total,
+    pct_non_citizen = pop_foreign_born_noncitizen / pop_nativity_total
   ) %>%
   select(
     geo_level, geo_id, geo_name, year,
@@ -94,7 +109,10 @@ migration_silver_kpi <- all_acs_clean %>%
     mig_same_house, mig_moved_same_cnty,
     mig_moved_same_st, mig_moved_diff_st, mig_moved_abroad,
     pct_same_house, pct_moved_same_cnty,
-    pct_moved_same_st, pct_moved_diff_st, pct_moved_abroad
+    pct_moved_same_st, pct_moved_diff_st, pct_moved_abroad,
+    pop_nativity_total, pop_native, pop_foreign_born, 
+    pop_foreign_born_citizen, pop_foreign_born_noncitizen, 
+    pct_native, pct_foreign_born, pct_non_citizen
   )
 
 # 6. Materialize to Silver DB ----

@@ -951,13 +951,15 @@ dbDisconnect(con, shutdown = TRUE)
 
 # We can bring in County GDP Later
 
-# Create Silver Data ----
-# Union Staging Data together
-# Add Source, Vintage, etc
-# Join to our cleaned dictionary to get topic types and clean descriptions
-
-## CAINC1 ----
-cainc1_silver <- dplyr::bind_rows(
-  stage_cainc1_cbsa,
-  stage_cainc1_county
+raw_cagdp2_county_a <- bea_fetch_regional_lines_geos(
+  api_key     = bea_key,
+  table_name  = "CAGDP2",
+  line_codes  = A_aggregates,          # CAINC1 valid: 1,2,3
+  years       = collapse_years(2015:2023),
+  geofips_vec = "COUNTY",        # all CBSAs
+  verbose     = TRUE
 )
+
+stage_cagdp2_county_a <- normalize_bea_regional_stage(raw_cagdp2_county_a, "cbsa")
+
+

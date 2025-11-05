@@ -195,7 +195,7 @@ cbsa_state_xwalk_clean <- cbsa_county_xwalk_clean %>%
   group_by(cbsa_code, cbsa_name, state_fips, state_name) %>%
   summarize(counties = n()) %>%
   ungroup() %>%
-  mutate(vintate = 2023L,
+  mutate(vintage = 2023L,
          source = "DERIVED_FROM_CBSA_COUNTY_XWALK")
 
 DBI::dbWriteTable(con, DBI::Id(schema="silver", table="xwalk_cbsa_state"),

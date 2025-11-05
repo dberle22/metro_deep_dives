@@ -1,4 +1,4 @@
-🗺️ Metro Deep Dive — Geographic Crosswalks
+# 🗺️ Metro Deep Dive — Geographic Crosswalks
 
 This folder contains the scripts and data structures we use to normalize geographies across ACS, HUD, OMB, and TIGER sources.
 
@@ -6,80 +6,64 @@ Because our analysis hops between county, CBSA, ZCTA, tract, state, and region/d
 
 This README documents:
 
-The script that builds the crosswalks (what it does, in what order)
+- The script that builds the crosswalks (what it does, in what order)
+- The source files used (OMB, HUD, TIGER)
+- The standardized tables we materialize
+- Known gaps / future improvements
 
-The source files used (OMB, HUD, TIGER)
-
-The standardized tables we materialize
-
-Known gaps / future improvements
-
-📂 Script
+# 📂 Script
 
 File: scripts/build_crosswalks.R
 Purpose: read multiple official crosswalk sources (OMB, HUD, TIGER), standardize column names and codes (GEOIDs), and write them to the silver schema in DuckDB.
 
 High-level flow:
 
-Load env, paths, and connect to DuckDB
-
-CBSA ⇔ County (OMB 2023)
-
-CBSA ⇔ Primary City (OMB 2023)
-
-Tract ⇔ County (TIGER 2023, currently NC/FL/GA)
-
-ZCTA ⇔ County (HUD ZIP→County 2025Q1)
-
-ZCTA ⇔ CBSA (HUD ZIP→CBSA 2025Q1)
-
-ZCTA ⇔ Tract (HUD ZIP→Tract 2025Q1)
-
-County ⇔ State (TIGER 2023)
-
-CBSA ⇔ State (derived from CBSA⇔County)
-
-State ⇔ Region / Division (static table)
+- Load env, paths, and connect to DuckDB
+- CBSA ⇔ County (OMB 2023) 
+- CBSA ⇔ Primary City (OMB 2023)
+- Tract ⇔ County (TIGER 2023, currently NC/FL/GA)
+- ZCTA ⇔ County (HUD ZIP→County 2025Q1)
+- ZCTA ⇔ CBSA (HUD ZIP→CBSA 2025Q1)
+- ZCTA ⇔ Tract (HUD ZIP→Tract 2025Q1)
+- County ⇔ State (TIGER 2023)
+- CBSA ⇔ State (derived from CBSA⇔County)
+- State ⇔ Region / Division (static table)
 
 All tables are written to DuckDB as:
 
 silver.xwalk_<from>_<to>
 
-🧱 Data Sources
+# 🧱 Data Sources
 
-OMB 2023 CBSA files
+## OMB 2023 CBSA files
 
-cbsa_county_xwalk_census.xlsx
-
-cbsa_primary_city_xwalk_census.xlsx
+- cbsa_county_xwalk_census.xlsx
+- cbsa_primary_city_xwalk_census.xlsx
 
 Both have 2 header/preamble rows → we read them with skip = 2
 
 Considered authoritative for CBSA definitions for 2023
 
-HUD ZIP Crosswalks (June 2025)
+## HUD ZIP Crosswalks (June 2025)
 
-ZIP_COUNTY_062025.xlsx
-
-ZIP_CBSA_062025.xlsx
-
-ZIP_TRACT_062025.xlsx
+- ZIP_COUNTY_062025.xlsx
+- ZIP_CBSA_062025.xlsx
+- ZIP_TRACT_062025.xlsx
 
 These already contain allocation ratios (RES_RATIO, BUS_RATIO, TOT_RATIO), so we kept them
 
-TIGER/Line 2023
+## TIGER/Line 2023
 
-tigris::tracts(year = 2023, cb = TRUE)
-
-tigris::counties(year = 2023, cb = TRUE)
+- tigris::tracts(year = 2023, cb = TRUE)
+- tigris::counties(year = 2023, cb = TRUE)
 
 Used to derive tract⇔county (for now limited to NC, FL, GA) and county⇔state
 
-Static Census region/division
+## Static Census region/division
 
 Hand-built tibble, standard Census 4-region / 9-division mapping
 
-🧪 1. CBSA ⇔ County (silver.xwalk_cbsa_county)
+## 🧪 1. CBSA ⇔ County (silver.xwalk_cbsa_county)
 
 Source: OMB 2023 CBSA–County Excel
 Read: read_excel(..., skip = 2)
@@ -124,7 +108,7 @@ Clean 5-digit county GEOIDs (county_geoid)
 
 This is the anchor for building CBSA-level datasets from county ACS.
 
-🏙️ 2. CBSA ⇔ Primary City (silver.xwalk_cbsa_primary_city)
+## 🏙️ 2. CBSA ⇔ Primary City (silver.xwalk_cbsa_primary_city)
 
 Source: OMB 2023 Principal City file
 Transform:
@@ -158,7 +142,7 @@ number of central / outlying counties
 multi-state flag
 …but not now.
 
-🧭 3. Tract ⇔ County (silver.xwalk_tract_county)
+## 🧭 3. Tract ⇔ County (silver.xwalk_tract_county)
 
 Source: tigris::tracts(year = 2023, cb = TRUE)
 
@@ -184,7 +168,7 @@ vintage = 2023, source = 'TIGRIS'
 
 Use: to roll tract ACS → county and then county → CBSA.
 
-📮 4. ZCTA ⇔ County (silver.xwalk_zcta_county)
+## 📮 4. ZCTA ⇔ County (silver.xwalk_zcta_county)
 
 Source: HUD ZIP→County 2025Q1 Excel
 Why HUD? it already has allocation ratios, so we don’t have to invent weights.
@@ -214,7 +198,7 @@ silver.xwalk_zcta_county
 
 This one is many-to-many but already weighted, so when we roll ZCTA → county we can do properly weighted aggregates.
 
-🏢 5. ZCTA ⇔ CBSA (silver.xwalk_zcta_cbsa)
+## 🏢 5. ZCTA ⇔ CBSA (silver.xwalk_zcta_cbsa)
 
 Source: HUD ZIP→CBSA 2025Q1
 Transform is identical to the county one — we just rename to CBSA:
@@ -242,7 +226,7 @@ silver.xwalk_zcta_cbsa
 
 This gives us a direct ZCTA → CBSA relationship (with weights), which is super useful for ZCTA-level ACS or Zillow/HUD data we want to map into CBSAs.
 
-🧱 6. ZCTA ⇔ Tract (silver.xwalk_zcta_tract)
+## 🧱 6. ZCTA ⇔ Tract (silver.xwalk_zcta_tract)
 
 Source: HUD ZIP→Tract 2025Q1
 
@@ -251,7 +235,7 @@ This is what lets us bridge ZIP/ZCTA data down to tracts, then up again to count
 Stored as:
 silver.xwalk_zcta_tract
 
-🏛️ 7. County ⇔ State (silver.xwalk_county_state)
+## 🏛️ 7. County ⇔ State (silver.xwalk_county_state)
 
 Source: tigris::counties(year = 2023, cb = TRUE)
 
@@ -260,7 +244,7 @@ Stored as: silver.xwalk_county_state
 
 This makes every county row immediately “state-aware” and lets us hop to region/division.
 
-🏙️ 8. CBSA ⇔ State (silver.xwalk_cbsa_state)
+## 🏙️ 8. CBSA ⇔ State (silver.xwalk_cbsa_state)
 
 This one is derived — we didn’t download it. We built it from the CBSA ⇔ County mapping:
 
@@ -279,12 +263,12 @@ silver.xwalk_cbsa_state
 
 This will show one row per (CBSA, State) — which is perfect for telling which CBSAs are multistate. Later we can build “primary state” by weighting with county population.
 
-🧭 9. State ⇔ Region / Division (silver.xwalk_state_region)
+## 🧭 9. State ⇔ Region / Division (silver.xwalk_state_region)
 
 Static tibble → written to silver.
 This is the same table you outlined in the ACS README — we just persisted it next to the other crosswalks so everything geo-related is in one schema.
 
-🧩 What these crosswalks enable
+# 🧩 What these crosswalks enable
 
 With these 8 tables in silver, you can do:
 
@@ -302,31 +286,18 @@ zcta → cbsa (direct)
 
 That’s the full “geo spine” you need for CBSA scoring and for aggregating lower-level data up to your 2023 CBSA definitions.
 
-⚠️ Notes / Gaps / To-Dos
+# ⚠️ Notes / Gaps / To-Dos
 
-Tract coverage is partial
-
-current script filters tracts to NC, FL, GA
-
+- Tract coverage is partial
+- current script filters tracts to NC, FL, GA
 ✅ OK for now, but we should loop all 50 states + DC later
-
-No Place ⇔ County yet
-
+- No Place ⇔ County yet
 we discussed two good options (ZCTA bridge or sf overlay)
-
 for now this is intentionally left blank in the script
-
-vintate typo in CBSA ⇔ State
-
-change to vintage for consistency
-
-HUD files are 2025Q1
-
+- HUD files are 2025Q1
 if a new quarter is added, we should keep the old one and append with a vintage column, not overwrite
 
-Standardization
-
+- Standardization
 right now tables are named xwalk_* and not yet in the fully generic
 from_geo_level / from_geoid / to_geo_level / to_geoid shape
-
 we can add a thin Silver-standardization script later to make that uniform

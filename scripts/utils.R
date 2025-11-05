@@ -16,6 +16,7 @@ library(viridis)
 library(ggrepel)
 library(tidycensus)
 library(readxl)
+library(bea.R)
 
 # Reproducibility ----
 set.seed(42)

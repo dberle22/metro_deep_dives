@@ -1,9 +1,9 @@
-🧭 Metro Deep Dive — ACS Ingest & Silver Layer
+# 🧭 Metro Deep Dive — ACS Ingest & Silver Layer
 
 This folder contains all scripts, functions, and documentation for the ingestion and transformation of U.S. Census American Community Survey (ACS) 5-Year Estimates into standardized Silver layer tables.
 The ACS provides the demographic, economic, housing, and social backbone of the Metro Deep Dive project.
 
-📂 Repository Structure
+# 📂 Repository Structure
 Path	Description
 scripts/ingest_acs.R	Generic ACS ingestion function and per-topic pulls from the Census API (via tidycensus).
 scripts/model_acs_to_silver.R	Silver layer modeling script — reads staging data, cleans, reshapes, and computes KPI buckets.
@@ -11,12 +11,13 @@ data/bronze/	Raw downloaded ACS CSV/XLSX files (optional if using API).
 data/silver/	Standardized Silver tables output to DuckDB (silver.*)
 scripts/utils.R	Shared helper functions (standardize_acs_df(), file paths, logging).
 data/duckdb/metro_deep_dive.duckdb	Primary analytical database (Bronze → Silver → Gold).
-⚙️ Script Overview
+
+# ⚙️ Script Overview
 1. ingest_acs.R
 
 Purpose: download ACS data programmatically for multiple years and geographies, standardize variable naming, and write to the staging schema in DuckDB.
 
-Key functions:
+## Key functions:
 
 get_acs_multi_year(geography, vars, state = NULL, years = 2012:2023)
 
@@ -45,12 +46,12 @@ Purpose: transform staging ACS data into standardized Silver KPIs.
 
 Each theme follows a six-step structure:
 
-# 1. Setup environment and DB connection
-# 2. Read staging tables (by geo)
-# 3. Standardize columns, drop MOEs, add geo_level
-# 4. Union all geographies
-# 5. Compute KPI buckets (per theme)
-# 6. Write Silver base and KPI tables
+- 1. Setup environment and DB connection
+- 2. Read staging tables (by geo)
+- 3. Standardize columns, drop MOEs, add geo_level
+- 4. Union all geographies
+- 5. Compute KPI buckets (per theme)
+- 6. Write Silver base and KPI tables
 
 
 Standardized helper:
@@ -71,7 +72,7 @@ All Silver tables are written as:
 silver.{theme}_base
 silver.{theme}_kpi
 
-🧱 Silver Layer Architecture
+# 🧱 Silver Layer Architecture
 
 Schema: silver
 Core Columns (all themes):
@@ -85,12 +86,12 @@ One _base table (raw estimates) and one _kpi table (derived metrics)
 
 Consistent design → simplifies Gold layer joins
 
-📊 Themes & KPIs
+# 📊 Themes & KPIs
 
 Below are the standardized ACS themes, source tables, and key Silver KPIs.
 All cover 2012–2023 unless otherwise noted.
 
-🧑‍🤝‍🧑 Demographics & Age
+## 🧑‍🤝‍🧑 Demographics & Age
 
 Source: B01001
 KPIs:
@@ -101,7 +102,7 @@ Age group counts (under 18, 18–64, 65+)
 
 youth_dependency_ratio, old_age_dependency_ratio, aging_index
 
-🌎 Race & Ethnicity
+## 🌎 Race & Ethnicity
 
 Source: B03002
 KPIs:
@@ -110,7 +111,7 @@ KPIs:
 
 diversity_index = 1 - Σ(pᵢ²)
 
-🎓 Education
+## 🎓 Education
 
 Source: B15003
 KPIs:
@@ -125,7 +126,7 @@ KPIs:
 
 % Graduate+
 
-💵 Income & Poverty
+## 💵 Income & Poverty
 
 Source: B19013, B17001, B19083
 KPIs:
@@ -138,7 +139,7 @@ gini_income
 
 5- and 10-year income growth (Gold)
 
-🏗️ Labor, Industry & Occupation
+## 🏗️ Labor, Industry & Occupation
 
 Source: B23025, C24010, C24030
 KPIs:
@@ -151,7 +152,7 @@ lfpr, unemp_rate, emp_pop_ratio
 
 industry_diversity = 1 - Σ(pct_ind_*²)
 
-🏠 Housing & Structure
+## 🏠 Housing & Structure
 
 Source: B25001–B25077
 KPIs:
@@ -166,7 +167,7 @@ rent_to_income, value_to_income (Gold)
 
 structure_type_share (1–unit, 2–4, 5+ units)
 
-🚚 Migration & Nativity
+## 🚚 Migration & Nativity
 
 Source: B07003, B05002
 KPIs:
@@ -177,7 +178,7 @@ KPIs:
 
 mobility_rate = 1 - same_house
 
-🚗 Transportation & Accessibility
+## 🚗 Transportation & Accessibility
 
 Source: B08301, B08201, B08013
 KPIs:
@@ -188,7 +189,7 @@ KPIs:
 
 mean_travel_time
 
-🧑‍💻 Social & Digital Infrastructure (2015–2023 only)
+## 🧑‍💻 Social & Digital Infrastructure (2015–2023 only)
 
 Source: B11001, B28002, B27010
 KPIs:
@@ -199,7 +200,7 @@ KPIs:
 
 % digital_inclusion_index (Gold candidate)
 
-🧩 Metadata & Documentation
+## 🧩 Metadata & Documentation
 
 Two supporting tables describe the Silver layer:
 
@@ -210,7 +211,7 @@ silver.kpi_dictionary	KPI name, business definition, formula notes, and source A
 
 These tables power documentation and ensure full lineage from variable → KPI → Gold metric.
 
-🧠 Future Gold KPIs (ACS-based)
+# 🧠 Future Gold KPIs (ACS-based)
 
 These are derived metrics planned for the Gold layer, combining multiple Silver themes:
 
@@ -224,7 +225,8 @@ Equity	gini_income, poverty_rate_change	inequality tracking
 Diversity	diversity_index	1 - Σ(pᵢ²)
 Access	pct_wfh, pct_hh_no_vehicle	accessibility indicators
 Composite Scores	affordability_index, mobility_index, overheating_score	cross-domain indices for investment ranking
-🗂️ Example Output Schema
+
+# 🗂️ Example Output Schema
 
 Example: silver.housing_kpi
 
@@ -240,7 +242,8 @@ owner_occ_rate	DOUBLE	Share of occupied units that are owner-occupied
 median_home_value	DOUBLE	Median owner-occupied home value
 rent_burden_30plus	DOUBLE	% of renters paying >30% income on rent
 …	…	…
-🧩 Key Design Notes
+
+# 🧩 Key Design Notes
 
 Wide format in Silver: simplifies KPI computation and joins; Gold will pivot long.
 
@@ -252,7 +255,7 @@ Staging schema mirrors Census variables for easy re-ingestion.
 
 Metadata tables auto-generated to keep documentation current.
 
-🚀 Next Steps
+# 🚀 Next Steps
 
 Finalize crosswalk documentation (County↔CBSA, ZCTA↔County/CBSA, Tract↔County).
 

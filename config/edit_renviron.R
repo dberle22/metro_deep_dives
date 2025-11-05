@@ -3,7 +3,7 @@
 # Load Package
 library(usethis)
 
-# Get working directy and set if needed 
+# Get working directly and set if needed 
 getwd()
 setwd("/Users/danberle/Documents/projects/metro_deep_dive")
 

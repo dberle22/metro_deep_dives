@@ -1,4 +1,4 @@
-# In this script we normalize BEA data into our Silver layer
+# In this script we normalize BEA CAINC1 data into our Silver layer
 
 # 1. Set up our Environment
 # 2. Read in our Staging Data to R Data Frames

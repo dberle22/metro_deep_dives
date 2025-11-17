@@ -556,6 +556,116 @@ stage_cagdp2_cbsa <- dplyr::bind_rows(
 DBI::dbWriteTable(con, DBI::Id(schema="staging", table="bea_regional_cbsa_cagdp2"),
                   stage_cagdp2_cbsa, overwrite = TRUE)
 
+
+### County ----
+years <- 2010:2023
+
+raw_cagdp2_county_a <- bea_fetch_regional_lines_geos(
+  api_key     = bea_key,
+  table_name  = "CAGDP2",
+  line_codes  = A_aggregates,          # CAINC1 valid: 1,2,3
+  years       = collapse_years(years),
+  geofips_vec = "COUNTY",        # all CBSAs
+  verbose     = TRUE
+)
+
+stage_cagdp2_county_a <- normalize_bea_regional_stage(raw_cagdp2_county_a, "county")
+
+raw_cagdp2_county_b <- bea_fetch_regional_lines_geos(
+  api_key     = bea_key,
+  table_name  = "CAGDP2",
+  line_codes  = B_goods_mfg,          # CAINC1 valid: 1,2,3
+  years       = collapse_years(years),
+  geofips_vec = "COUNTY",        # all CBSAs
+  verbose     = TRUE
+)
+
+stage_cagdp2_county_b <- normalize_bea_regional_stage(raw_cagdp2_county_b, "county")
+
+raw_cagdp2_county_c <- bea_fetch_regional_lines_geos(
+  api_key     = bea_key,
+  table_name  = "CAGDP2",
+  line_codes  = C_trade_tti,          # CAINC1 valid: 1,2,3
+  years       = collapse_years(years),
+  geofips_vec = "COUNTY",        # all CBSAs
+  verbose     = TRUE
+)
+
+stage_cagdp2_county_c <- normalize_bea_regional_stage(raw_cagdp2_county_c, "county")
+
+raw_cagdp2_county_d <- bea_fetch_regional_lines_geos(
+  api_key     = bea_key,
+  table_name  = "CAGDP2",
+  line_codes  = D_fire_re,          # CAINC1 valid: 1,2,3
+  years       = collapse_years(years),
+  geofips_vec = "COUNTY",        # all CBSAs
+  verbose     = TRUE
+)
+
+stage_cagdp2_county_d <- normalize_bea_regional_stage(raw_cagdp2_county_d, "county")
+
+raw_cagdp2_county_e <- bea_fetch_regional_lines_geos(
+  api_key     = bea_key,
+  table_name  = "CAGDP2",
+  line_codes  = E_prof_biz,          # CAINC1 valid: 1,2,3
+  years       = collapse_years(years),
+  geofips_vec = "COUNTY",        # all CBSAs
+  verbose     = TRUE
+)
+
+stage_cagdp2_county_e <- normalize_bea_regional_stage(raw_cagdp2_county_e, "county")
+
+raw_cagdp2_county_f <- bea_fetch_regional_lines_geos(
+  api_key     = bea_key,
+  table_name  = "CAGDP2",
+  line_codes  = F_ed_health,          # CAINC1 valid: 1,2,3
+  years       = collapse_years(years),
+  geofips_vec = "COUNTY",        # all CBSAs
+  verbose     = TRUE
+)
+
+stage_cagdp2_county_f <- normalize_bea_regional_stage(raw_cagdp2_county_f, "county")
+
+raw_cagdp2_county_g <- bea_fetch_regional_lines_geos(
+  api_key     = bea_key,
+  table_name  = "CAGDP2",
+  line_codes  = G_leisure_os,          # CAINC1 valid: 1,2,3
+  years       = collapse_years(years),
+  geofips_vec = "COUNTY",        # all CBSAs
+  verbose     = TRUE
+)
+
+stage_cagdp2_county_g <- normalize_bea_regional_stage(raw_cagdp2_county_g, "county")
+
+raw_cagdp2_county_x <- bea_fetch_regional_lines_geos(
+  api_key     = bea_key,
+  table_name  = "CAGDP2",
+  line_codes  = X_optional,          # CAINC1 valid: 1,2,3
+  years       = collapse_years(years),
+  geofips_vec = "COUNTY",        # all CBSAs
+  verbose     = TRUE
+)
+
+stage_cagdp2_county_x <- normalize_bea_regional_stage(raw_cagdp2_county_x, "county")
+
+# Bind data together 
+stage_cagdp2_county <- dplyr::bind_rows(
+  stage_cagdp2_county_a,
+  stage_cagdp2_county_b,
+  stage_cagdp2_county_c,
+  stage_cagdp2_county_d,
+  stage_cagdp2_county_e,
+  stage_cagdp2_county_f,
+  stage_cagdp2_county_g,
+  stage_cagdp2_county_x
+)
+
+# Write Staging data
+DBI::dbWriteTable(con, DBI::Id(schema="staging", table="bea_regional_county_cagdp2"),
+                  stage_cagdp2_county, overwrite = TRUE)
+
+
+
 ### State ----
 raw_cagdp2_state_a <- bea_fetch_regional_lines_geos(
   api_key     = bea_key,
@@ -793,6 +903,111 @@ stage_cagdp9_cbsa <- dplyr::bind_rows(
 DBI::dbWriteTable(con, DBI::Id(schema="staging", table="bea_regional_cbsa_cagdp9"),
                   stage_cagdp9_cbsa, overwrite = TRUE)
 
+### County ----
+raw_cagdp9_county_a <- bea_fetch_regional_lines_geos(
+  api_key     = bea_key,
+  table_name  = "CAGDP9",
+  line_codes  = A_aggregates,          # CAINC1 valid: 1,2,3
+  years       = collapse_years(years),
+  geofips_vec = "COUNTY",        # all countys
+  verbose     = TRUE
+)
+
+stage_cagdp9_county_a <- normalize_bea_regional_stage(raw_cagdp9_county_a, "county")
+
+raw_cagdp9_county_b <- bea_fetch_regional_lines_geos(
+  api_key     = bea_key,
+  table_name  = "CAGDP9",
+  line_codes  = B_goods_mfg,          # CAINC1 valid: 1,2,3
+  years       = collapse_years(years),
+  geofips_vec = "COUNTY",        # all countys
+  verbose     = TRUE
+)
+
+stage_cagdp9_county_b <- normalize_bea_regional_stage(raw_cagdp9_county_b, "county")
+
+raw_cagdp9_county_c <- bea_fetch_regional_lines_geos(
+  api_key     = bea_key,
+  table_name  = "CAGDP9",
+  line_codes  = C_trade_tti,          # CAINC1 valid: 1,2,3
+  years       = collapse_years(years),
+  geofips_vec = "COUNTY",        # all countys
+  verbose     = TRUE
+)
+
+stage_cagdp9_county_c <- normalize_bea_regional_stage(raw_cagdp9_county_c, "county")
+
+raw_cagdp9_county_d <- bea_fetch_regional_lines_geos(
+  api_key     = bea_key,
+  table_name  = "CAGDP9",
+  line_codes  = D_fire_re,          # CAINC1 valid: 1,2,3
+  years       = collapse_years(years),
+  geofips_vec = "COUNTY",        # all countys
+  verbose     = TRUE
+)
+
+stage_cagdp9_county_d <- normalize_bea_regional_stage(raw_cagdp9_county_d, "county")
+
+raw_cagdp9_county_e <- bea_fetch_regional_lines_geos(
+  api_key     = bea_key,
+  table_name  = "CAGDP9",
+  line_codes  = E_prof_biz,          # CAINC1 valid: 1,2,3
+  years       = collapse_years(years),
+  geofips_vec = "COUNTY",        # all countys
+  verbose     = TRUE
+)
+
+stage_cagdp9_county_e <- normalize_bea_regional_stage(raw_cagdp9_county_e, "county")
+
+raw_cagdp9_county_f <- bea_fetch_regional_lines_geos(
+  api_key     = bea_key,
+  table_name  = "CAGDP9",
+  line_codes  = F_ed_health,          # CAINC1 valid: 1,2,3
+  years       = collapse_years(years),
+  geofips_vec = "COUNTY",        # all countys
+  verbose     = TRUE
+)
+
+stage_cagdp9_county_f <- normalize_bea_regional_stage(raw_cagdp9_county_f, "county")
+
+raw_cagdp9_county_g <- bea_fetch_regional_lines_geos(
+  api_key     = bea_key,
+  table_name  = "CAGDP9",
+  line_codes  = G_leisure_os,          # CAINC1 valid: 1,2,3
+  years       = collapse_years(years),
+  geofips_vec = "COUNTY",        # all countys
+  verbose     = TRUE
+)
+
+stage_cagdp9_county_g <- normalize_bea_regional_stage(raw_cagdp9_county_g, "county")
+
+raw_cagdp9_county_x <- bea_fetch_regional_lines_geos(
+  api_key     = bea_key,
+  table_name  = "CAGDP9",
+  line_codes  = X_optional,          # CAINC1 valid: 1,2,3
+  years       = collapse_years(years),
+  geofips_vec = "COUNTY",        # all countys
+  verbose     = TRUE
+)
+
+stage_cagdp9_county_x <- normalize_bea_regional_stage(raw_cagdp9_county_x, "county")
+
+# Bind data together 
+stage_cagdp9_county <- dplyr::bind_rows(
+  stage_cagdp9_county_a,
+  stage_cagdp9_county_b,
+  stage_cagdp9_county_c,
+  stage_cagdp9_county_d,
+  stage_cagdp9_county_e,
+  stage_cagdp9_county_f,
+  stage_cagdp9_county_g,
+  stage_cagdp9_county_x
+)
+
+# Write Staging data
+DBI::dbWriteTable(con, DBI::Id(schema="staging", table="bea_regional_county_cagdp9"),
+                  stage_cagdp9_county, overwrite = TRUE)
+
 ### State ----
 raw_cagdp9_state_a <- bea_fetch_regional_lines_geos(
   api_key     = bea_key,
@@ -928,7 +1143,6 @@ stage_marpp_cbsa <- normalize_bea_regional_stage(raw_marpp_cbsa, "cbsa")
 DBI::dbWriteTable(con, DBI::Id(schema="staging", table="bea_regional_cbsa_marpp"),
                   stage_marpp_cbsa, overwrite = TRUE)
 
-## Ingest data ----
 ### States ----
 raw_marpp_state <- bea_fetch_regional_lines_geos(
   api_key     = bea_key,
@@ -943,23 +1157,9 @@ stage_marpp_state <- normalize_bea_regional_stage(raw_marpp_state, "state")
 
 # Write Staging data
 DBI::dbWriteTable(con, DBI::Id(schema="staging", table="bea_regional_state_marpp"),
-                  stage_marpp_cbsa, overwrite = TRUE)
+                  stage_marpp_state, overwrite = TRUE)
 
 
 # Shutdown ----
 dbDisconnect(con, shutdown = TRUE)
-
-# We can bring in County GDP Later
-
-raw_cagdp2_county_a <- bea_fetch_regional_lines_geos(
-  api_key     = bea_key,
-  table_name  = "CAGDP2",
-  line_codes  = A_aggregates,          # CAINC1 valid: 1,2,3
-  years       = collapse_years(2015:2023),
-  geofips_vec = "COUNTY",        # all CBSAs
-  verbose     = TRUE
-)
-
-stage_cagdp2_county_a <- normalize_bea_regional_stage(raw_cagdp2_county_a, "cbsa")
-
 

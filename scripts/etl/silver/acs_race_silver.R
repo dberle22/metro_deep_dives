@@ -3,9 +3,10 @@
 # 1. Set up our Environment
 # 2. Read in our Staging Data to R Data Frames
 # 3. Add Geo Level to each table, drop _M, rename columns
-# 4. Union our Data Frames together
-# 5. Compute buckets and select main columns
-# 6. Materialize to Silver
+# 4. Build CBSA level data
+# 5. Union our Data Frames together
+# 6. Compute buckets and select main columns
+# 7. Materialize to Silver
 
 # 1. Set up our Environment ----
 # Find our current directory 

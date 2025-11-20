@@ -82,3 +82,4 @@ DBI::dbWriteTable(con, DBI::Id(schema="silver", table="bea_regional_cainc4_wide"
 
 # Disconnect our DB ----
 dbDisconnect(con, shutdown = TRUE)
+

@@ -32,20 +32,155 @@ con <- dbConnect(duckdb::duckdb(), dbdir = db_path, read_only = FALSE)
 # 2. Read in our Staging Data to R Data Frames ----
 
 ## Metric Tables ----
-
 county_cainc1_stage <- dbGetQuery(con, "SELECT * FROM staging.bea_regional_county_cainc1")
 cbsa_cainc1_stage <- dbGetQuery(con, "SELECT * FROM staging.bea_regional_cbsa_cainc1")
 state_cainc1_stage <- dbGetQuery(con, "SELECT * FROM staging.bea_regional_state_cainc1")
 
+## CBSA <> County Xwalk ----
+cbsa_county_xwalk <- dbGetQuery(con, "SELECT * FROM silver.xwalk_cbsa_county")
+
 ## Reference Tables ----
 line_codes_ref <- dbGetQuery(con, "SELECT * FROM silver.bea_regional_metrics_ref")
 
-state_test <- state_cainc1_stage %>%
-  filter(line_code == "3")
 
-
-# 3. Standardize Value Names ----
+# 3. Build Final Tables ----
 # Column names are already standard and value columns are multiplied
+
+## Define our metrics ----
+cainc1_long %>%
+  select(code, metric_key, line_desc_clean) %>%
+  unique()
+
+## County ----
+### Add Line Code Refs to the DF and select base columns ----
+county_base <- county_cainc1_stage %>%
+  mutate(line_code = as.character(line_code)) %>%
+  left_join(line_codes_cainc1,
+            by = c("table" = "table", "line_code" = "line_code")) %>%
+  select(table, code, geo_level, geo_id, geo_name, 
+         period, line_desc_clean, metric_key, value, note_ref)
+
+### De-dupe on the county level & calculate totals kpis ----
+county_totals <- county_base %>%
+  filter(metric_key %in% c("pi_total", "population")) %>%
+  group_by(table, code, geo_level, geo_id, geo_name, 
+           period, line_desc_clean, metric_key) %>%
+  summarize(value = sum(value, na.rm = TRUE)) %>%
+  ungroup()
+
+#### Check for dupes - Good to go ----
+county_dupe <- county_totals %>%
+  select(code, table, geo_id, period, metric_key) %>%
+  group_by(geo_id, period, metric_key) %>%
+  summarize(records = n()) %>%
+  filter(records > 1)
+
+### Pivot table to wide format to calculate income per capita then reform
+county_pc <- county_totals %>%
+  select(geo_id, geo_name, geo_level, period, table, metric_key, value) %>%
+  pivot_wider(
+    names_from  = metric_key,   # pi_total, pi_per_capita, population
+    values_from = value
+  ) %>%
+  mutate(pi_per_capita = pi_total / population) %>%
+  mutate(code = "CAINC1-3",
+         metric_key = "pi_per_capita",
+         line_desc_clean = "Per capita personal income") %>%
+  select(table, code, geo_level, geo_id, geo_name, period,
+         line_desc_clean, metric_key, value = pi_per_capita)
+
+### Bind Rows to make long data frame ----
+county_long <- rbind(
+  county_totals,
+  county_pc
+)
+
+
+## CBSA ----
+### Build CBSA based on our County DFs
+
+### Join Counties to XWalk ----
+cbsa_rebase_totals <- county_totals %>%
+  dplyr::inner_join(
+    cbsa_county_xwalk %>%
+      select(county_geoid, county_name, county_flag, 
+             cbsa_code, cbsa_name, cbsa_type),
+    by = c("geo_id" = "county_geoid")
+  )
+
+### Recalculate Totals KPIs ----
+cbsa_totals <- cbsa_rebase_totals %>%
+  filter(metric_key %in% c("pi_total", "population")) %>%
+  group_by(table, code, cbsa_code, cbsa_name, 
+           period, line_desc_clean, metric_key) %>%
+  summarize(value = sum(value, na.rm = TRUE)) %>%
+  ungroup() %>%
+  mutate(geo_level = "cbsa") %>%
+  select(table, code, geo_level, geo_id = cbsa_code, geo_name = cbsa_name,
+         period, line_desc_clean, metric_key, value)
+ 
+#### Check for dupes - Good to go ----
+cbsa_dupe <- cbsa_totals %>%
+  select(code, table, geo_id, period, metric_key) %>%
+  group_by(geo_id, period, metric_key) %>%
+  summarize(records = n()) %>%
+  filter(records > 1)
+
+### Calculate and Reshape Rates ----
+cbsa_pc <- cbsa_totals %>%
+  select(geo_id, geo_name, geo_level, period, table, metric_key, value) %>%
+  pivot_wider(
+    names_from  = metric_key,   # pi_total, pi_per_capita, population
+    values_from = value
+  ) %>%
+  mutate(pi_per_capita = pi_total / population) %>%
+  mutate(code = "CAINC1-3",
+         metric_key = "pi_per_capita",
+         line_desc_clean = "Per capita personal income") %>%
+  select(table, code, geo_level, geo_id, geo_name, period,
+         line_desc_clean, metric_key, value = pi_per_capita)
+
+### Bind Rows to make long data frame ----
+cbsa_long <- rbind(
+  cbsa_totals,
+  cbsa_pc
+)
+
+## State
+### Join State DF to Line Code Ref, Select final columns
+state_base <- state_cainc1_stage %>%
+  mutate(line_code = as.character(line_code)) %>%
+  left_join(line_codes_cainc1,
+            by = c("table" = "table", "line_code" = "line_code")) %>%
+select(table, code, geo_level, geo_id, geo_name, 
+       period, line_desc_clean, metric_key, value)
+
+
+## Create Final DFs ----
+### Bind Long DFs together ----
+long_df <- rbind(
+  county_long,
+  cbsa_long,
+  state_base
+)
+
+### Pivot Long DFs wider ----
+wide_df <- long_df %>%
+  select(geo_level, geo_id, geo_name, period, table, metric_key, value) %>%
+  pivot_wider(
+    names_from  = metric_key,   # pi_total, pi_per_capita, population
+    values_from = value
+  )
+
+## Write data frames to our database ----
+DBI::dbWriteTable(con, DBI::Id(schema="silver", table="bea_regional_cainc1_long"),
+                  long_df, overwrite = TRUE)
+
+DBI::dbWriteTable(con, DBI::Id(schema="silver", table="bea_regional_cainc1_wide"),
+                  wide_df, overwrite = TRUE)
+
+# Disconnect our DB ----
+dbDisconnect(con, shutdown = TRUE)
 
 ## Create Long Data Set ----
 # Union together tables, add Line Code Names from 
@@ -53,7 +188,6 @@ state_test <- state_cainc1_stage %>%
 
 # Union data frames together
 cainc1_stage_all <- bind_rows(
-  cbsa_cainc1_stage,
   county_cainc1_stage,
   state_cainc1_stage
 ) %>%
@@ -77,34 +211,81 @@ cainc1_wide <- cainc1_long %>%
     values_from = value
   )
 
-## Write data frames to our database ----
-DBI::dbWriteTable(con, DBI::Id(schema="silver", table="bea_regional_cainc1_long"),
-                  cainc1_long, overwrite = TRUE)
+# Rebase CBSA using County level data ----
+# We assume that we have a county level data frame that is already in a long format
+# Our crosswalk has a county_geoid and cbsa_code
 
-DBI::dbWriteTable(con, DBI::Id(schema="silver", table="bea_regional_cainc1_wide"),
-                  cainc1_wide, overwrite = TRUE)
+## Define our metrics ----
+cainc1_long %>%
+  select(metric_key) %>%
+  unique()
 
-# Disconnect our DB ----
-dbDisconnect(con, shutdown = TRUE)
+# Pi Total, Population, Pi Per Capita
 
-# Extras ----
+## Use the County DF and Join to CBSA Xwalk to get CBSA ----
+cbsa_rebase_base <- cainc1_long %>%
+  filter(geo_level == "county") %>%
+  dplyr::inner_join(
+    cbsa_county_xwalk %>%
+      select(county_geoid, county_name, county_flag, 
+             cbsa_code, cbsa_name, cbsa_type),
+    by = c("geo_id" = "county_geoid")
+  )
 
-county_cainc4_stage <- dbGetQuery(con, "SELECT * FROM staging.bea_regional_county_cainc4")
-cbsa_cainc4_stage <- dbGetQuery(con, "SELECT * FROM staging.bea_regional_cbsa_cainc4")
-state_cainc4_stage <- dbGetQuery(con, "SELECT * FROM staging.bea_regional_state_cainc4")
+## Build metrics one by one ----
+### Totals KPIs go together in one DF
 
-county_cainc4_stage <- dbGetQuery(con, "SELECT * FROM staging.bea_regional_county_cainc4")
-cbsa_cainc4_stage <- dbGetQuery(con, "SELECT * FROM staging.bea_regional_cbsa_cainc4")
-state_cainc4_stage <- dbGetQuery(con, "SELECT * FROM staging.bea_regional_state_cainc4")
+### Total Income, Population ----
+cbsa_totals_kpis <- cbsa_rebase_base %>%
+  filter(metric_key %in% c("pi_total", "population")) %>%
+  group_by(code, table, cbsa_code, cbsa_name, period, line_code, 
+           unit_raw, unit_mult, note_ref, metric_key, line_desc_clean) %>%
+  summarize(value_raw = sum(value_raw, na.rm = TRUE),
+            value = sum(value, na.rm = TRUE)) %>%
+  ungroup()
 
-county_cagdp2_stage <- dbGetQuery(con, "SELECT * FROM staging.bea_regional_county_cagdp2")
-cbsa_cagdp2_stage <- dbGetQuery(con, "SELECT * FROM staging.bea_regional_cbsa_cagdp2")
-state_cagdp2_stage <- dbGetQuery(con, "SELECT * FROM staging.bea_regional_state_cagdp2")
+cbsa_kpi_dupes <- cbsa_totals_kpis %>%
+  select(code, table, cbsa_code, cbsa_name, period, metric_key) %>%
+  group_by(cbsa_code, period, metric_key) %>%
+  summarize(records = n()) %>%
+  filter(records > 1)
 
-county_cagdp9_stage <- dbGetQuery(con, "SELECT * FROM staging.bea_regional_county_cagdp9")
-cbsa_cagdp9_stage <- dbGetQuery(con, "SELECT * FROM staging.bea_regional_cbsa_cagdp9")
-state_cagdp9_stage <- dbGetQuery(con, "SELECT * FROM staging.bea_regional_state_cagdp9")
+cbsa_dupe_test <- cbsa_totals_kpis %>% 
+  filter(cbsa_code == "10740")
 
-cbsa_marpp_stage <- dbGetQuery(con, "SELECT * FROM staging.bea_regional_cbsa_marpp")
-state_marpp_stage <- dbGetQuery(con, "SELECT * FROM staging.bea_regional_state_marpp")
+### Income Per Capita ----
+cbsa_pc_kpis <- cbsa_totals_kpis %>%
+  select(cbsa_code, cbsa_name, period, table, metric_key, value) %>%
+  pivot_wider(
+    names_from  = metric_key,   # pi_total, pi_per_capita, population
+    values_from = value
+  ) %>%
+  mutate(pi_per_capita = pi_total / population)
+
+## Aggregate our metrics, using correct approaches for different metric types
+  ### Only grab the actual grouping variables needed: Code, Table, CBSA, Period, Metric Key
+  ### Compute metrics 1 by 1 for base
+  ### Compute our per capita metrics later
+  ### Put all back together at the end and rebuild the format to match silver
+
+
+cbsa_rebase_agg <- cbsa_rebase_base %>%
+  group_by(code, table, cbsa_code, cbsa_name, period, 
+           line_code, unit_mult, note_ref, metric_key, line_desc_clean) %>%
+  summarize(
+    value = case_when(
+      # Income Population
+      metric_key == "pi_total" ~ sum(value, na.rm = TRUE),
+      # Population
+      metric_key == "population" ~ sum(value, na.rm = TRUE),
+      TRUE ~ NA_real_            # everything else handled later
+    ),
+    .groups = "drop"
+    
+  )
+
+## Compute pi_per_capita based on pi_total and population
+
+## Union together the data frames into one final long data frame
+
 

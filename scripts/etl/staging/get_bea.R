@@ -306,14 +306,13 @@ cainc4_line_codes <- tbl_lines %>%
 
 ## Set Configs ----
 years   <- 2000:2023
-line_codes <- c("50","60","70","46","47","45","42","35","61","62","11")
-
+line_codes <- c(11,12,35,36,37,38,42,45,46,47,50,60,61,62,70,71,72)
 # Create smaller groups for Counties
-g1 <- c(50,60,70)
-g2 <- c(35,42,45)
-g3 <- c(46,47)
-g4 <- c(61,62,11)
-g5 <- c(71,72)   # optional
+g1 <- c(11,12)
+g2 <- c(35,36,37,38)
+g3 <- c(42,45,46,47)
+g4 <- c(50,60,61,62)
+g5 <- c(70,71,72)   # optional
 
 ## Ingest data ----
 ### CBSA ----
@@ -425,13 +424,11 @@ DBI::dbWriteTable(con, DBI::Id(schema="staging", table="bea_regional_state_cainc
                   stage_cainc4_state, overwrite = TRUE)
 
 
-
 # CAGDP2 ----
 ## Identify the Line Codes for CAINC4 ----
 cagdp2_line_codes <- tbl_lines %>%
   filter(table_name_ref == "CAGDP2") 
 
-write_csv(cagdp2_line_codes, "/Users/danberle/Desktop/cagdp2_line_codes.csv")
 
 ## Set Configs ----
 years   <- 2000:2023

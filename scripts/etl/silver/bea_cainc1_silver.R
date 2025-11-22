@@ -47,7 +47,8 @@ line_codes_ref <- dbGetQuery(con, "SELECT * FROM silver.bea_regional_metrics_ref
 # Column names are already standard and value columns are multiplied
 
 ## Define our metrics ----
-cainc1_long %>%
+line_codes_ref %>%
+  filter(table == "CAINC1") %>%
   select(code, metric_key, line_desc_clean) %>%
   unique()
 
@@ -181,111 +182,3 @@ DBI::dbWriteTable(con, DBI::Id(schema="silver", table="bea_regional_cainc1_wide"
 
 # Disconnect our DB ----
 dbDisconnect(con, shutdown = TRUE)
-
-## Create Long Data Set ----
-# Union together tables, add Line Code Names from 
-# Clean up the value names using the Line Code Names from our Ref table
-
-# Union data frames together
-cainc1_stage_all <- bind_rows(
-  county_cainc1_stage,
-  state_cainc1_stage
-) %>%
-  mutate(line_code = as.character(line_code))
-
-# Keep only CAINC1 from Line Codes
-line_codes_cainc1 <- line_codes_ref %>%
-  filter(table == "CAINC1") %>%
-  select(table, line_code, metric_key, line_desc_clean)
-
-# Join on line_code (and table, if present)
-cainc1_long <- cainc1_stage_all %>%
-  left_join(line_codes_cainc1,
-            by = c("table" = "table", "line_code" = "line_code"))
-
-## Create the Wide data set ----
-cainc1_wide <- cainc1_long %>%
-  select(geo_level, geo_id, geo_name, period, table, metric_key, value) %>%
-  pivot_wider(
-    names_from  = metric_key,   # pi_total, pi_per_capita, population
-    values_from = value
-  )
-
-# Rebase CBSA using County level data ----
-# We assume that we have a county level data frame that is already in a long format
-# Our crosswalk has a county_geoid and cbsa_code
-
-## Define our metrics ----
-cainc1_long %>%
-  select(metric_key) %>%
-  unique()
-
-# Pi Total, Population, Pi Per Capita
-
-## Use the County DF and Join to CBSA Xwalk to get CBSA ----
-cbsa_rebase_base <- cainc1_long %>%
-  filter(geo_level == "county") %>%
-  dplyr::inner_join(
-    cbsa_county_xwalk %>%
-      select(county_geoid, county_name, county_flag, 
-             cbsa_code, cbsa_name, cbsa_type),
-    by = c("geo_id" = "county_geoid")
-  )
-
-## Build metrics one by one ----
-### Totals KPIs go together in one DF
-
-### Total Income, Population ----
-cbsa_totals_kpis <- cbsa_rebase_base %>%
-  filter(metric_key %in% c("pi_total", "population")) %>%
-  group_by(code, table, cbsa_code, cbsa_name, period, line_code, 
-           unit_raw, unit_mult, note_ref, metric_key, line_desc_clean) %>%
-  summarize(value_raw = sum(value_raw, na.rm = TRUE),
-            value = sum(value, na.rm = TRUE)) %>%
-  ungroup()
-
-cbsa_kpi_dupes <- cbsa_totals_kpis %>%
-  select(code, table, cbsa_code, cbsa_name, period, metric_key) %>%
-  group_by(cbsa_code, period, metric_key) %>%
-  summarize(records = n()) %>%
-  filter(records > 1)
-
-cbsa_dupe_test <- cbsa_totals_kpis %>% 
-  filter(cbsa_code == "10740")
-
-### Income Per Capita ----
-cbsa_pc_kpis <- cbsa_totals_kpis %>%
-  select(cbsa_code, cbsa_name, period, table, metric_key, value) %>%
-  pivot_wider(
-    names_from  = metric_key,   # pi_total, pi_per_capita, population
-    values_from = value
-  ) %>%
-  mutate(pi_per_capita = pi_total / population)
-
-## Aggregate our metrics, using correct approaches for different metric types
-  ### Only grab the actual grouping variables needed: Code, Table, CBSA, Period, Metric Key
-  ### Compute metrics 1 by 1 for base
-  ### Compute our per capita metrics later
-  ### Put all back together at the end and rebuild the format to match silver
-
-
-cbsa_rebase_agg <- cbsa_rebase_base %>%
-  group_by(code, table, cbsa_code, cbsa_name, period, 
-           line_code, unit_mult, note_ref, metric_key, line_desc_clean) %>%
-  summarize(
-    value = case_when(
-      # Income Population
-      metric_key == "pi_total" ~ sum(value, na.rm = TRUE),
-      # Population
-      metric_key == "population" ~ sum(value, na.rm = TRUE),
-      TRUE ~ NA_real_            # everything else handled later
-    ),
-    .groups = "drop"
-    
-  )
-
-## Compute pi_per_capita based on pi_total and population
-
-## Union together the data frames into one final long data frame
-
-

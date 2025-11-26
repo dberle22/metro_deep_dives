@@ -32,9 +32,11 @@ con <- dbConnect(duckdb::duckdb(), dbdir = db_path, read_only = FALSE)
 # 2. Read in our Staging Data to R Data Frames ----
 
 ## Metric Tables ----
-
 cbsa_marpp_stage <- dbGetQuery(con, "SELECT * FROM staging.bea_regional_cbsa_marpp")
 state_marpp_stage <- dbGetQuery(con, "SELECT * FROM staging.bea_regional_state_marpp")
+
+## CBSA <> County Xwalk ----
+cbsa_county_xwalk <- dbGetQuery(con, "SELECT * FROM silver.xwalk_cbsa_county")
 
 ## Reference Tables ----
 line_codes_ref <- dbGetQuery(con, "SELECT * FROM silver.bea_regional_metrics_ref")

@@ -47,9 +47,14 @@ line_codes_ref <- dbGetQuery(con, "SELECT * FROM silver.bea_regional_metrics_ref
 # Column names are already standard and value columns are multiplied
 
 ## Define our metrics ----
+
 line_codes_ref %>%
   filter(table == "CAINC1") %>%
   select(code, metric_key, line_desc_clean) %>%
+  unique()
+
+line_codes_cainc1 <- line_codes_ref %>%
+  filter(table == "CAINC1") %>%
   unique()
 
 ## County ----

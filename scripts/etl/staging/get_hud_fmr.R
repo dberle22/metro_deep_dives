@@ -1,4 +1,4 @@
-# In this script we get HUD Data scraped directly from their website
+# In this script we get HUD FMR Data scraped directly from their website
 
 # Find our current directory 
 getwd()

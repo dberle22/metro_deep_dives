@@ -40,6 +40,9 @@ tract_fl_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_income_tract_fl
 tract_ga_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_income_tract_ga")
 tract_nc_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_income_tract_nc")
 
+## CBSA <> County Xwalk ----
+cbsa_county_xwalk <- dbGetQuery(con, "SELECT * FROM silver.xwalk_cbsa_county")
+
 # 3. Add Geo Level to each table, drop _M, rename columns ----
 us_acs_clean <- standardize_acs_df(us_acs_stage, "US", drop_e = FALSE)
 region_acs_clean <- standardize_acs_df(region_acs_stage, "Region")
@@ -53,18 +56,57 @@ tract_fl_clean    <- standardize_acs_df(tract_fl_acs_stage, "tract")
 tract_ga_clean    <- standardize_acs_df(tract_ga_acs_stage, "tract")
 
 # 4. Union our Data Frames together ----
-# Union Tracts together
+## Create CBSA Rebase ----
+## Median HH Income, Per Capita Income and Gini are weighted, the rest are totals
+### Join CBSA Xwalk to Counties ----
+cbsa_base <- county_acs_clean %>%
+  inner_join(cbsa_county_xwalk %>% select(cbsa_code, cbsa_name, county_geoid),
+             by = c("geo_id" = "county_geoid"))
+
+### Create Rebased Files ----
+cbsa_hh_inc <- sum_pops_by_cbsa(
+  df = cbsa_base,
+  pop_pattern = "hh_inc_"
+)
+
+cbsa_pov <- sum_pops_by_cbsa(
+  df = cbsa_base,
+  pop_pattern = "pov_"
+)
+
+cbsa_weighted_avg <- cbsa_base %>%
+  dplyr::group_by(cbsa_code, cbsa_name, year) %>%
+  dplyr::summarise(
+    median_hh_incomeE = stats::weighted.mean(median_hh_incomeE, hh_inc_totalE, na.rm = TRUE),
+    per_capita_incomeE = stats::weighted.mean(per_capita_incomeE, pov_universeE, na.rm = TRUE),
+    gini_indexE = stats::weighted.mean(gini_indexE, pov_universeE, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+### Final CBSA File ----
+#### Join staging files and reorder
+cbsa_acs_clean <- cbsa_hh_inc %>%
+  left_join(cbsa_pov, by = c("cbsa_code", "cbsa_name", "year")) %>%
+  left_join(cbsa_weighted_avg, by = c("cbsa_code", "cbsa_name", "year")) %>%
+  mutate(geo_level = "cbsa") %>%
+  select(geo_level, geo_id = cbsa_code, geo_name = cbsa_name, year,
+         median_hh_incomeE, per_capita_incomeE, pov_universeE, pov_belowE,
+         hh_inc_totalE:hh_inc_200k_plusE, gini_indexE)
+
+## Union Tracts together ----
 tract_all_clean <- dplyr::bind_rows(
   tract_nc_clean,
   tract_fl_clean,
   tract_ga_clean
 )
 
+## Union all DFs ----
 all_acs_clean <- dplyr::bind_rows(
   us_acs_clean,
   region_acs_clean,
   division_acs_clean,
   state_acs_clean,
+  cbsa_acs_clean,
   county_acs_clean,
   place_acs_clean,
   zcta_acs_clean,

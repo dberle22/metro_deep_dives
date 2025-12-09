@@ -40,6 +40,9 @@ tract_fl_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_labor_tract_fl"
 tract_ga_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_labor_tract_ga")
 tract_nc_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_labor_tract_nc")
 
+## CBSA <> County Xwalk ----
+cbsa_county_xwalk <- dbGetQuery(con, "SELECT * FROM silver.xwalk_cbsa_county")
+
 # 3. Add Geo Level to each table, drop _M, rename columns ----
 us_acs_clean <- standardize_acs_df(us_acs_stage, "US", drop_e = FALSE)
 region_acs_clean <- standardize_acs_df(region_acs_stage, "Region")
@@ -53,18 +56,44 @@ tract_fl_clean    <- standardize_acs_df(tract_fl_acs_stage, "tract")
 tract_ga_clean    <- standardize_acs_df(tract_ga_acs_stage, "tract")
 
 # 4. Union our Data Frames together ----
-# Union Tracts together
+## Rebase County Data to CBSA  ----
+### Join CBSA Xwalk to Counties ----
+cbsa_base <- county_acs_clean %>%
+  inner_join(cbsa_county_xwalk %>% select(cbsa_code, cbsa_name, county_geoid),
+             by = c("geo_id" = "county_geoid"))
+
+### Create Rebased Files ----
+cbsa_total <- cbsa_base %>%
+    dplyr::group_by(cbsa_code, cbsa_name, year) %>%
+    dplyr::summarise(
+      dplyr::across(
+        dplyr::where(is.numeric) & !dplyr::any_of(c("year")),
+        ~ sum(.x, na.rm = TRUE)
+      ),
+      .groups = "drop"
+    )
+
+### Make final DF
+cbsa_acs_clean <- cbsa_total %>%
+  mutate(geo_level = "cbsa") %>%
+  select(geo_level, geo_id = cbsa_code, geo_name = cbsa_name, year,
+         pop_16plusE:ind_female_public_adminE)
+
+
+## Union Tracts together ---- 
 tract_all_clean <- dplyr::bind_rows(
   tract_nc_clean,
   tract_fl_clean,
   tract_ga_clean
 )
 
+## Union all DFs together ----
 all_acs_clean <- dplyr::bind_rows(
   us_acs_clean,
   region_acs_clean,
   division_acs_clean,
   state_acs_clean,
+  cbsa_acs_clean,
   county_acs_clean,
   place_acs_clean,
   zcta_acs_clean,

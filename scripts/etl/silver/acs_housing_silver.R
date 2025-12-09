@@ -40,6 +40,9 @@ tract_fl_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_housing_tract_f
 tract_ga_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_housing_tract_ga")
 tract_nc_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_housing_tract_nc")
 
+## CBSA <> County Xwalk ----
+cbsa_county_xwalk <- dbGetQuery(con, "SELECT * FROM silver.xwalk_cbsa_county")
+
 # 3. Add Geo Level to each table, drop _M, rename columns ----
 us_acs_clean <- standardize_acs_df(us_acs_stage, "US", drop_e = FALSE)
 region_acs_clean <- standardize_acs_df(region_acs_stage, "Region")
@@ -53,18 +56,69 @@ tract_fl_clean    <- standardize_acs_df(tract_fl_acs_stage, "tract")
 tract_ga_clean    <- standardize_acs_df(tract_ga_acs_stage, "tract")
 
 # 4. Union our Data Frames together ----
-# Union Tracts together
+## Create CBSA Rebase ----
+### Join CBSA Xwalk to Counties ----
+cbsa_base <- county_acs_clean %>%
+  inner_join(cbsa_county_xwalk %>% select(cbsa_code, cbsa_name, county_geoid),
+             by = c("geo_id" = "county_geoid"))
+
+### Create Rebased Files ----
+cbsa_rent <- sum_pops_by_cbsa(
+  df = cbsa_base,
+  pop_pattern = "rent_"
+)
+
+cbsa_struct <- sum_pops_by_cbsa(
+  df = cbsa_base,
+  pop_pattern = "struct_"
+)
+
+cbsa_housing <- cbsa_base %>%
+  group_by(cbsa_code, cbsa_name, year) %>%
+  summarise(
+    hu_totalE = sum(hu_totalE, na.rm = TRUE),
+    occ_totalE = sum(occ_totalE, na.rm = TRUE), 
+    occ_occupiedE = sum(occ_occupiedE, na.rm = TRUE), 
+    occ_vacantE = sum(occ_vacantE, na.rm = TRUE),
+    tenure_totalE = sum(tenure_totalE, na.rm = TRUE),
+    owner_occupiedE = sum(owner_occupiedE, na.rm = TRUE),
+    renter_occupiedE = sum(renter_occupiedE, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+cbsa_medians <- weighted_by_cbsa_pattern(
+  df = cbsa_base,
+  value_pattern = "median_",
+  weight_col = "hu_totalE"
+)
+
+### Final CBSA File ----
+#### Join staging files and reorder
+cbsa_acs_clean <- cbsa_rent %>%
+  left_join(cbsa_struct, by = c("cbsa_code", "cbsa_name", "year")) %>%
+  left_join(cbsa_housing, by = c("cbsa_code", "cbsa_name", "year")) %>%
+  left_join(cbsa_medians, by = c("cbsa_code", "cbsa_name", "year")) %>%
+  mutate(geo_level = "cbsa") %>%
+  select(geo_level, geo_id = cbsa_code, geo_name = cbsa_name, year,
+         hu_totalE:renter_occupiedE, median_gross_rentE:median_home_valueE,
+         rent_burden_totalE:rent_not_computedE, 
+         median_owner_costs_totalE:median_owner_costs_no_mortgageE,
+         struct_totalE:struct_otherE)
+
+## Union Tracts together ----
 tract_all_clean <- dplyr::bind_rows(
   tract_nc_clean,
   tract_fl_clean,
   tract_ga_clean
 )
 
+## Union all DFs ----
 all_acs_clean <- dplyr::bind_rows(
   us_acs_clean,
   region_acs_clean,
   division_acs_clean,
   state_acs_clean,
+  cbsa_acs_clean,
   county_acs_clean,
   place_acs_clean,
   zcta_acs_clean,
@@ -156,4 +210,5 @@ DBI::dbWriteTable(con, DBI::Id(schema="silver", table="housing_base"),
 DBI::dbWriteTable(con, DBI::Id(schema="silver", table="housing_kpi"),
                   housing_silver_kpi, overwrite = TRUE)
 
+# Shutdown ----
 dbDisconnect(con, shutdown = TRUE)

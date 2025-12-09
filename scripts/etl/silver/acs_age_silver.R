@@ -40,6 +40,9 @@ tract_fl_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_age_tract_fl")
 tract_ga_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_age_tract_ga")
 tract_nc_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_age_tract_nc")
 
+## CBSA <> County Xwalk ----
+cbsa_county_xwalk <- dbGetQuery(con, "SELECT * FROM silver.xwalk_cbsa_county")
+
 # 3. Add Geo Level to each table, drop _M, rename columns ----
 us_acs_clean <- standardize_acs_df(us_acs_stage, "US", drop_e = FALSE)
 region_acs_clean <- standardize_acs_df(region_acs_stage, "Region")
@@ -53,18 +56,51 @@ tract_fl_clean    <- standardize_acs_df(tract_fl_acs_stage, "tract")
 tract_ga_clean    <- standardize_acs_df(tract_ga_acs_stage, "tract")
 
 # 4. Union our Data Frames together ----
-# Union Tracts together
+## Rebase County Data to CBSA  ----
+### Join CBSA Xwalk to Counties ----
+cbsa_base <- county_acs_clean %>%
+  inner_join(cbsa_county_xwalk %>% select(cbsa_code, cbsa_name, county_geoid),
+             by = c("geo_id" = "county_geoid"))
+
+### Create Rebased Files ----
+cbsa_pop <- cbsa_base %>%
+  group_by(cbsa_code, cbsa_name, year) %>%
+  summarise(
+    across(
+      starts_with("pop"),              # all columns with "pop" in the name
+      ~ sum(.x, na.rm = TRUE)
+    ),
+    .groups = "drop"
+  )
+
+cbsa_med_age <- cbsa_base %>%
+  group_by(cbsa_code, cbsa_name, year) %>%
+  summarise(
+    median_age.E = stats::weighted.mean(median_age.E, pop_totalE, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+### Join to make Final DF
+cbsa_acs_clean <- cbsa_pop %>%
+  left_join(cbsa_med_age, by = c("cbsa_code", "cbsa_name", "year")) %>%
+  mutate(geo_level = "cbsa") %>%
+  select(geo_level, geo_id = cbsa_code, geo_name = cbsa_name, year,
+         pop_totalE, median_age.E, pop_male_totalE:pop_age_female_85_plusE)
+
+## Union Tracts together ----
 tract_all_clean <- dplyr::bind_rows(
   tract_nc_clean,
   tract_fl_clean,
   tract_ga_clean
 )
 
+## Union all DFs together ----
 all_acs_clean <- dplyr::bind_rows(
   us_acs_clean,
   region_acs_clean,
   division_acs_clean,
   state_acs_clean,
+  cbsa_acs_clean,
   county_acs_clean,
   place_acs_clean,
   zcta_acs_clean,
@@ -139,7 +175,7 @@ age_silver_kpi <- all_acs_clean %>%
   ) %>%
   select(
     geo_level, geo_id, geo_name, year,
-    pop_total,
+    pop_total, median_age = median_age.E,
     age_0_4, age_5_14, age_15_24, age_25_34, age_35_44, age_45_54,
     age_55_64, age_65_74, age_75_84, age_85p, age_25_54,
     pct_age_0_4, pct_age_5_14, pct_age_15_24, pct_age_25_34, pct_age_35_44,
@@ -151,6 +187,8 @@ age_silver_kpi <- all_acs_clean %>%
     youth_dependency = (age_0_4 + age_5_14) / na_if(age_25_54, 0),
     old_age_dependency = (age_65_74 + age_75_84 + age_85p) / na_if(age_25_54, 0)
   )
+
+# Add Median Age
 
 # 6. Materialize to Silver DB ----
 DBI::dbWriteTable(con, DBI::Id(schema="silver", table="age_base"),

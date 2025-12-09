@@ -40,6 +40,9 @@ tract_fl_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_transport_tract
 tract_ga_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_transport_tract_ga")
 tract_nc_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_transport_tract_nc")
 
+## CBSA <> County Xwalk ----
+cbsa_county_xwalk <- dbGetQuery(con, "SELECT * FROM silver.xwalk_cbsa_county")
+
 # 3. Add Geo Level to each table, drop _M, rename columns ----
 us_acs_clean <- standardize_acs_df(us_acs_stage, "US", drop_e = FALSE)
 region_acs_clean <- standardize_acs_df(region_acs_stage, "Region")
@@ -53,24 +56,61 @@ tract_fl_clean    <- standardize_acs_df(tract_fl_acs_stage, "tract")
 tract_ga_clean    <- standardize_acs_df(tract_ga_acs_stage, "tract")
 
 # 4. Union our Data Frames together ----
-# Union Tracts together
+## Create CBSA Rebase ----
+## All are Totals
+### Join CBSA Xwalk to Counties ----
+cbsa_base <- county_acs_clean %>%
+  inner_join(cbsa_county_xwalk %>% select(cbsa_code, cbsa_name, county_geoid),
+             by = c("geo_id" = "county_geoid"))
+
+### Create Rebased Files ----
+cbsa_commute <- sum_pops_by_cbsa(
+  df = cbsa_base,
+  pop_pattern = "commute_"
+)
+
+cbsa_veh <- sum_pops_by_cbsa(
+  df = cbsa_base,
+  pop_pattern = "veh_"
+)
+
+cbsa_weighted_avg <- cbsa_base %>%
+  dplyr::group_by(cbsa_code, cbsa_name, year) %>%
+  dplyr::summarise(
+    mean_travel_timeE = stats::weighted.mean(mean_travel_timeE, commute_workers_totalE, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+### Final CBSA File ----
+# Commute and Vehicle are Totals, Mean Travel Time is Weighted
+#### Join staging files and reorder
+cbsa_acs_clean <- cbsa_commute %>%
+  left_join(cbsa_veh, by = c("cbsa_code", "cbsa_name", "year")) %>%
+  left_join(cbsa_weighted_avg, by = c("cbsa_code", "cbsa_name", "year")) %>%
+  mutate(geo_level = "cbsa") %>%
+  select(geo_level, geo_id = cbsa_code, geo_name = cbsa_name, year,
+         commute_workers_totalE:commute_worked_homeE, 
+         veh_total_hhE:veh_4_plusE, mean_travel_timeE)
+
+## Union Tracts together ---- 
 tract_all_clean <- dplyr::bind_rows(
   tract_nc_clean,
   tract_fl_clean,
   tract_ga_clean
 )
 
+## Union all DFs ----
 all_acs_clean <- dplyr::bind_rows(
   us_acs_clean,
   region_acs_clean,
   division_acs_clean,
   state_acs_clean,
+  cbsa_acs_clean,
   county_acs_clean,
   place_acs_clean,
   zcta_acs_clean,
   tract_all_clean
 )
-
 
 # 5. Compute buckets and select main columns ----
 transport_silver_kpi <- all_acs_clean %>%

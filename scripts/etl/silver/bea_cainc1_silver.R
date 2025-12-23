@@ -50,7 +50,7 @@ line_codes_ref <- dbGetQuery(con, "SELECT * FROM silver.bea_regional_metrics_ref
 
 line_codes_ref %>%
   filter(table == "CAINC1") %>%
-  select(code, metric_key, line_desc_clean) %>%
+  select(line_code, metric_key, line_desc_clean) %>%
   unique()
 
 line_codes_cainc1 <- line_codes_ref %>%

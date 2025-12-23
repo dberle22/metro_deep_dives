@@ -1165,7 +1165,7 @@ marpp_line_codes <- tbl_lines %>%
 ## Set Configs ----
 years   <- 2000:2023
 
-marpp_codes <- c("1","2","3","4")
+marpp_codes <- c("1","2","3","4", "5", "6", "7", "8")
 
 ## Ingest data ----
 ### CBSA ----
@@ -1187,7 +1187,7 @@ DBI::dbWriteTable(con, DBI::Id(schema="staging", table="bea_regional_cbsa_marpp"
 ### States ----
 raw_marpp_state <- bea_fetch_regional_lines_geos(
   api_key     = bea_key,
-  table_name  = "MARPP",
+  table_name  = "SARPP",
   line_codes  = marpp_codes,          # CAINC1 valid: 1,2,3
   years       = collapse_years(years),
   geofips_vec = "STATE",        # all States

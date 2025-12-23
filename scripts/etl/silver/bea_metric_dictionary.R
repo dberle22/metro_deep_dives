@@ -26,7 +26,7 @@ line_codes <- dbGetQuery(con, "SELECT * FROM staging.bea_regional_line_codes")
 
 # Clean our Line Codes Ref Table ----
 line_codes_update <- line_codes %>%
-  filter(table_name_ref %in% c("CAINC1","CAINC4","CAGDP2","CAGDP9","MARPP")) %>%
+  filter(table_name_ref %in% c("CAINC1","CAINC4","CAGDP2","CAGDP9","MARPP","SARPP")) %>%
   mutate(
     # grab text in the LAST parentheses at the end, if any
     naics_raw = str_match(line_desc_clean, "\\(([^()]*)\\)\\s*$")[, 2],
@@ -58,7 +58,7 @@ line_codes_update <- line_codes %>%
 
 ## Create our base metric ref table ----
 line_codes_clean <- line_codes_update %>%
-  dplyr::filter(table_name_ref %in% c("CAINC1","CAINC4","CAGDP2","CAGDP9","MARPP")) %>%
+  dplyr::filter(table_name_ref %in% c("CAINC1","CAINC4","CAGDP2","CAGDP9","MARPP","SARPP")) %>%
   dplyr::mutate(
     table       = table_name_ref,
     metric_key  = dplyr::case_when(
@@ -179,13 +179,25 @@ line_codes_clean <- line_codes_update %>%
       table == "MARPP" & line_code == 3L ~ "rpp_all_items",
       table == "MARPP" & line_code == 4L ~ "rpp_goods",
       table == "MARPP" & line_code == 5L ~ "rpp_services_rents",
-      table == "MARPP" & line_code == 6L ~ "rpp_services_other",
-      table == "MARPP" & line_code == 7L ~ "rpp_services_health",
+      table == "MARPP" & line_code == 6L ~ "rpp_services_utilities",
+      table == "MARPP" & line_code == 7L ~ "rpp_services_other",
       table == "MARPP" & line_code == 8L ~ "rpp_price_deflator",
+      
+      # SARPP
+      table == "SARPP" & line_code == 1L ~ "rpp_real_personal_income",
+      table == "SARPP" & line_code == 2L ~ "rpp_real_pc_income",
+      table == "SARPP" & line_code == 3L ~ "rpp_real_consumption",
+      table == "SARPP" & line_code == 4L ~ "rpp_real_pc_consumption",
+      table == "SARPP" & line_code == 5L ~ "rpp_all_items",
+      table == "SARPP" & line_code == 6L ~ "rpp_goods",
+      table == "SARPP" & line_code == 7L ~ "rpp_services_rents",
+      table == "SARPP" & line_code == 8L ~ "rpp_services_utilities",
+      table == "SARPP" & line_code == 9L ~ "rpp_services_other",
+      table == "SARPP" & line_code == 10L ~ "rpp_price_deflator",
       TRUE ~ stringr::str_to_lower(stringr::str_replace_all(line_desc, "[^A-Za-z0-9]+", "_"))
     ),
     metric_label   = line_desc,
-    include_in_wide= dplyr::if_else(table %in% c("CAINC1","CAGDP2","CAGDP9","MARPP") & line_code %in% c(1L,2L,3L), TRUE, FALSE),
+    include_in_wide= dplyr::if_else(table %in% c("CAINC1","CAGDP2","CAGDP9","MARPP","SARPP") & line_code %in% c(1L,2L,3L), TRUE, FALSE),
     topic          = dplyr::case_when(
       table %in% c("CAINC1","CAINC4") ~ "income",
       table %in% c("CAGDP2","CAGDP9") ~ "gdp",

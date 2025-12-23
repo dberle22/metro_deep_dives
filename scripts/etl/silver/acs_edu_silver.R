@@ -140,7 +140,7 @@ edu_silver_kpi <- all_acs_clean %>%
   select(
     geo_level, geo_id, geo_name, year,
     edu_total_25p,
-    lt_hs_25p, hs_ged_25p, somecol_assoc_25p, ba_25p,
+    lt_hs_25p, hs_ged_25p, somecol_assoc_25p, ba_25p, ma_plus_25p,
     pct_lt_hs_25p, pct_hs_ged_25p, pct_somecol_assoc_25p, pct_ba_25p, 
     pct_ma_plus_25p
   )

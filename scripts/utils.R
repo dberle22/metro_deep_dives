@@ -18,6 +18,7 @@ library(tidycensus)
 library(readxl)
 library(bea.R)
 library(here)
+library(DBI)
 
 # Reproducibility ----
 set.seed(42)
@@ -31,6 +32,12 @@ source(here::here("R", "generic_functions.R"))
 source(here::here("R", "rebase_cbsa_from_counties.R"))
 source(here::here("R", "acs_ingest.R"))
 source(here::here("R", "standardize_acs_df.R"))
+
+# Load user-level Renviron first (e.g. API keys)
+user_renv <- file.path(path.expand("~"), ".Renviron")
+if (file.exists(user_renv)) {
+  readRenviron(user_renv)
+}
 
 # Make sure we're reading from the project Renviron
 if (file.exists(".Renviron")) readRenviron(".Renviron")

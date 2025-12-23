@@ -57,7 +57,7 @@ marpp_stage_all <- bind_rows(
 
 # Keep only MARPP from Line Codes
 line_codes_marpp <- line_codes_ref %>%
-  filter(table == "MARPP") %>%
+  filter(table %in% c("MARPP", "SARPP")) %>%
   select(table, line_code, metric_key, line_desc_clean)
 
 # Join on line_code (and table, if present)
@@ -65,11 +65,21 @@ marpp_long <- marpp_stage_all %>%
   left_join(line_codes_marpp,
             by = c("table" = "table", "line_code" = "line_code"))
 
+marpp_test <- marpp_long %>%
+  filter(geo_level == "state")
+
+# Dupe Check
+dupes <- marpp_long %>%
+  group_by(geo_level, geo_id, geo_name, period, table, metric_key) %>%
+  summarize(count = n()) %>%
+  ungroup() %>%
+  filter(count > 1)
+
 ## Create the Wide data set ----
 marpp_wide <- marpp_long %>%
   select(geo_level, geo_id, geo_name, period, table, metric_key, value) %>%
   pivot_wider(
-    names_from  = metric_key,   # pi_total, pi_per_capita, population
+    names_from  = metric_key,   
     values_from = value
   )
 

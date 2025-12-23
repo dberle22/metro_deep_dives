@@ -121,10 +121,14 @@ age_silver_kpi <- all_acs_clean %>%
     age_5_14 = (pop_age_male_5_9E + pop_age_male_10_14E) +
       (pop_age_female_5_9E + pop_age_female_10_14E),
     
-    # 15–24  (15–17 + 18–19 + 20 + 21 + 22–24)
-    age_15_24 = (pop_age_male_15_17E + pop_age_male_18_19E + pop_age_male_20E +
-                   pop_age_male_21E + pop_age_male_22_24E) +
-      (pop_age_female_15_17E + pop_age_female_18_19E + pop_age_female_20E +
+    # 15–17  (15–17 + 18–19 + 20 + 21 + 22–24)
+    age_15_17 = (pop_age_male_15_17E) +
+      (pop_age_female_15_17E),
+    
+    # 18-24
+    age_18_24 = (pop_age_male_18_19E + pop_age_male_20E + 
+                   pop_age_male_21E + pop_age_male_22_24E) + 
+      (pop_age_female_18_19E + pop_age_female_20E + 
          pop_age_female_21E + pop_age_female_22_24E),
     
     # 25–34
@@ -163,7 +167,8 @@ age_silver_kpi <- all_acs_clean %>%
   mutate(
     pct_age_0_4   = age_0_4   / pop_total,
     pct_age_5_14  = age_5_14  / pop_total,
-    pct_age_15_24 = age_15_24 / pop_total,
+    pct_age_15_17 = age_15_17 / pop_total,
+    pct_age_18_24 = age_18_24 / pop_total,
     pct_age_25_34 = age_25_34 / pop_total,
     pct_age_35_44 = age_35_44 / pop_total,
     pct_age_45_54 = age_45_54 / pop_total,
@@ -176,9 +181,9 @@ age_silver_kpi <- all_acs_clean %>%
   select(
     geo_level, geo_id, geo_name, year,
     pop_total, median_age = median_age.E,
-    age_0_4, age_5_14, age_15_24, age_25_34, age_35_44, age_45_54,
+    age_0_4, age_5_14, age_15_17, age_18_24, age_25_34, age_35_44, age_45_54,
     age_55_64, age_65_74, age_75_84, age_85p, age_25_54,
-    pct_age_0_4, pct_age_5_14, pct_age_15_24, pct_age_25_34, pct_age_35_44,
+    pct_age_0_4, pct_age_5_14, pct_age_15_17, pct_age_18_24, pct_age_25_34, pct_age_35_44,
     pct_age_45_54, pct_age_55_64, pct_age_65_74, pct_age_75_84, pct_age_85p,
     pct_age_25_54
   ) %>%

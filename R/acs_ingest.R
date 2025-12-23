@@ -19,7 +19,8 @@ acs_ingest <- function(
     ...
 ) {
   # light guardrail for tract-level pulls
-  if (is.null(state) && tolower(geography) %in% c("tract", "block group")) {
+  if (is.null(state) && tolower(geography) %in% c("tract", "block group",
+                                                  "school district (elementary)", "school district (secondary)", "school district (unified)")) {
     stop("For geography='", geography, "', please provide `state` (can be a single value or vector).")
   }
   
@@ -35,7 +36,8 @@ acs_ingest <- function(
       ...
     )
     
-    if (!is.null(state) && tolower(geography) %in% c("tract", "block group", "county subdivision", "place")) {
+    if (!is.null(state) && tolower(geography) %in% c("tract", "block group", "county subdivision", "place",
+                                                     "school district (elementary)", "school district (secondary)", "school district (unified)")) {
       args$state <- state
     }
     

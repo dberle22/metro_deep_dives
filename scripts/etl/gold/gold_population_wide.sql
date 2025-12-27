@@ -36,7 +36,7 @@ SELECT geo_level,
 	END AS pop_cagr_5yr,
 	CASE 
     WHEN pop_lag10 > 0 THEN
-        POWER(pop_total * 1.0 / pop_lag5, 1.0 / 5.0) - 1
+        POWER(pop_total * 1.0 / pop_lag5, 1.0 / 10.0) - 1
     ELSE NULL
 	END AS pop_cagr_10yr,
 	median_age,

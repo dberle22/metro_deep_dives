@@ -1,0 +1,384 @@
+---
+title: "Texas School District Scores"
+output: html_notebook
+---
+
+```{r Set Up: Load Packages and Paths}
+# Read our common libraries & set other packages ----
+source(here::here("scripts", "utils.R"))
+
+
+# Set paths for our environments ----
+# Make sure we're reading from the project Renviron
+if (file.exists(".Renviron")) readRenviron(".Renviron")
+
+# Set our Paths - Pointing to our Bronze folder in Data
+data <- get_env_path("DATA")
+outputs <- get_env_path("OUTPUTS")
+db_path <- paste0(data, "/duckdb", "/metro_deep_dive.duckdb")
+output <- paste0(outputs, "/analyses/tx_school_districts")
+
+## Connect to the DB ----
+con <- dbConnect(duckdb::duckdb(), dbdir = db_path, read_only = FALSE)
+
+## Disconnect
+dbDisconnect(con, shutdown = TRUE)
+```
+
+```{r Set Up: Read in Data Sets}
+tx_school_district_metrics <- dbGetQuery(con, "SELECT * FROM gold.tx_isd_metrics")
+
+## Disconnect
+dbDisconnect(con, shutdown = TRUE)
+```
+
+```{r Set Up: Get Boundaries, show = FALSE }
+tx_boundary <- tigris::states(cb = FALSE, year = 2024) %>%
+  filter(STUSPS == "TX")
+
+tx_sd_unified <- tigris::school_districts(
+  state = "TX",
+  type  = "unified",
+  cb    = TRUE,
+  year  = 2024
+)
+
+# CBSAs
+## Ingest all CBSAs
+cbsa_sf <- tigris::core_based_statistical_areas(cb = TRUE, year = 2024)
+
+# Intersect to Texas footprint (keeps just CBSAs touching TX)
+cbsa_tx <- st_intersection(cbsa_sf, tx_boundary)
+
+# Transform CRS to 3857 - This is good for Webmaps
+## Check the current CRS 
+st_crs(tx_boundary)
+st_crs(tx_sd_unified)
+st_crs(cbsa_sf)
+```
+
+# Exec Summary
+
+# Top 25 Markets
+
+```{r Create our data frame}
+top_25 <- tx_school_district_metrics %>%
+  arrange(desc(lead_score)) %>%
+  slice_head(n = 25) %>%
+  mutate(
+    growth_label = case_when(
+      pop_growth_quartile == 4 ~ "↑ High growth",
+      pop_growth_quartile == 3 ~ "↗ Moderate growth",
+      pop_growth_quartile == 1 ~ "↓ Declining",
+      TRUE                     ~ "— Stable"
+    ),
+    econ_disadv_rate = economically_disadvantaged_percent / 100,
+    why = case_when(
+  allocations_per_student >= quantile(allocations_per_student, 0.75, na.rm = TRUE) &
+        econ_disadv_rate >= 0.60 ~
+        "High Title I funding and high student need",
+
+      enrollment >= quantile(enrollment, 0.75, na.rm = TRUE) ~
+        "Large district with meaningful contract scale",
+  
+      child_poverty_rate >= quantile(child_poverty_rate, 0.75, na.rm = TRUE) ~
+        "High community need aligned with federal funding",
+
+      pop_growth_quartile == 4 ~
+        "Strong growth outlook with solid funding base",
+
+      TRUE ~
+        "Balanced mix of scale, funding, and need"
+)
+
+  ) %>%
+  select(
+    rank = lead_score_rank,
+    district_name,
+    # tier, ## There is no Tiering yet
+    lead_score,
+    enrollment,
+    num_schools = number_of_schools,
+    title1_per_student = allocations_per_student,
+    econ_disadv_rate,
+    child_poverty_rate,
+    growth_label,
+    why
+  )
+```
+
+```{r Build Table}
+library(gt)
+
+top_25 %>%
+  gt() %>%
+
+  # Column labels
+  cols_label(
+    rank               = "",
+    district_name      = "District",
+    lead_score         = "Score",
+    enrollment         = "Enrollment",
+    num_schools        = "Schools",
+    title1_per_student = "Title I $ / Student",
+    econ_disadv_rate   = "Econ Disadv %",
+    child_poverty_rate = "Child Poverty %",
+    growth_label       = "Growth",
+    why                = "Why this district"
+  ) %>%
+
+  # Formatting
+  fmt_number(
+    columns = lead_score,
+    decimals = 0
+  ) %>%
+  fmt_number(
+    columns = c(enrollment, num_schools),
+    decimals = 0
+  ) %>%
+  fmt_currency(
+    columns = title1_per_student,
+    decimals = 0
+  ) %>%
+  fmt_percent(
+    columns = c(econ_disadv_rate, child_poverty_rate),
+    decimals = 0
+  ) %>%
+
+  # Emphasize score
+  tab_style(
+    style = list(
+      cell_fill(color = "#f5f7fa"),
+      cell_text(weight = "bold")
+    ),
+    locations = cells_body(columns = lead_score)
+  ) %>%
+
+  # Alignments
+  cols_align(
+    align = "center",
+    columns = c(rank, lead_score, growth_label)
+  ) %>%
+  cols_align(
+    align = "left",
+    columns = c(district_name, why)
+  ) %>%
+
+  # Header
+  tab_header(
+    title = "Top 25 Texas School District Leads",
+    subtitle = "Ranked by overall lead score with context for outreach conversations"
+  ) %>%
+
+  opt_table_outline() %>%
+  opt_all_caps()
+```
+
+# Map Time
+In this section we visualize our school districts against the backdrop of the map of Texas. We will be able to see geographic clusters of our top markets. We introduce a Tier for our Lead Score here. This is based on simple cutoffs: A is the Top 15th Percentile, B = 50th to 85th Percentile, and C is the bottom 50th Percentile.
+
+```{r Maps: Data Prep - Tiers}
+## Create our Tiers
+# Calculate cut points on non-missing scores
+cutoff_a <- quantile(tx_school_district_metrics$lead_score, 0.85, na.rm = TRUE)
+cutoff_b <- quantile(tx_school_district_metrics$lead_score, 0.50, na.rm = TRUE)
+
+# Add scoring
+scored_districts <- tx_school_district_metrics %>%
+  mutate(
+    lead_tier = case_when(
+      is.na(lead_score)        ~ NA_character_,
+      lead_score >= cutoff_a  ~ "A",
+      lead_score >= cutoff_b  ~ "B",
+      TRUE                          ~ "C"
+    ),
+    lead_tier = factor(lead_tier, levels = c("A", "B", "C"))
+  )
+```
+
+```{r Tiers QA}
+# distribution
+scored_districts %>%
+  count(lead_tier) %>%
+  mutate(pct = n / sum(n))
+
+# range check
+summary(scored_districts$lead_score)
+
+# confirm cutoffs
+cutoff_a
+cutoff_b
+```
+```{r Maps Data Prep - Map DFs and Vars}
+# Vars
+alpha_fill   <- 0.9
+top_n_outline <- 25
+plot_crs     <- sf::st_crs(tx_boundary)
+
+# Add Geography to metrics
+tx_sd_scored <- tx_sd_unified %>%
+  left_join(scored_districts, by = c("GEOID" = "nces_district_id"))
+
+
+# Optional: outline top-N districts by score
+topN_outline <- tx_sd_scored %>%
+  select(GEOID, lead_score, lead_tier) %>%
+  filter(!is.na(lead_score)) %>%
+  slice_max(order_by = lead_score, n = top_n_outline, with_ties = FALSE)
+
+# Map extent (Texas)
+bb   <- sf::st_bbox(tx_boundary)
+xlim <- c(bb["xmin"], bb["xmax"])
+ylim <- c(bb["ymin"], bb["ymax"])
+
+
+```
+
+```{r Map - Build}
+
+
+# Plot
+p_tx_tier_map <- ggplot() +
+
+  # Districts filled by tier
+  geom_sf(
+    data = tx_sd_scored,
+    aes(fill = lead_tier),
+    color = "white", linewidth = 0.22, alpha = alpha_fill
+  ) +
+
+  # Texas border (double stroke)
+  geom_sf(data = tx_boundary, fill = NA, color = "white",  linewidth = 0.8) +
+  geom_sf(data = tx_boundary, fill = NA, color = "grey30", linewidth = 0.45) +
+
+  # Subtle district edges
+  geom_sf(data = tx_sd_scored, fill = NA, color = "grey25", linewidth = 0.16) +
+
+  # Bold outline for top-N districts
+  geom_sf(data = topN_outline, fill = NA, color = "black", linewidth = 0.55) +
+
+  # Discrete viridis for tiers
+  scale_fill_viridis_d(
+    option = "viridis",
+    name   = "Lead Tier"
+  ) +
+
+  coord_sf(xlim = xlim, ylim = ylim, expand = FALSE, clip = "on") +
+  labs(
+    title    = "Texas School District Lead Tiers",
+    subtitle = "Fill: A/B/C tiers from lead score. Bold outline: Top districts by lead score."
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    axis.text    = element_blank(),
+    axis.title   = element_blank(),
+    axis.ticks   = element_blank(),
+    panel.grid   = element_blank(),
+    legend.title = element_text(face = "bold")
+  )
+
+p_tx_tier_map
+```
+
+```{r Map Build - Continuous w/ Deciles Data Prep}
+metric_var <- "lead_score"
+
+tx_sd_scored_deciles <- tx_sd_scored %>%
+  mutate(
+    score_decile = dplyr::ntile(.data[[metric_var]], 10),
+    score_decile_lbl = factor(
+      score_decile,
+      levels = 1:10,
+      labels = c("Bottom 10%", "10–20%", "20–30%", "30–40%", "40–50%",
+                 "50–60%", "60–70%", "70–80%", "80–90%", "Top 10%")
+    )
+  ) %>%
+  filter(!is.na(score_decile))
+
+# Create Top Decile CBSAs
+
+# districts in top decile
+top_decile_sf <- tx_sd_scored_deciles %>% filter(score_decile == 10)
+
+# count how many top-decile districts touch each CBSA
+cbsa_top_counts <- cbsa_tx %>%
+  st_make_valid() %>%
+  mutate(
+    top10_districts = lengths(st_intersects(geometry, st_make_valid(top_decile_sf)))
+  ) %>%
+  arrange(desc(top10_districts))
+
+n_cbsa_labels <- 12
+
+cbsa_labels <- cbsa_top_counts %>%
+  slice_head(n = n_cbsa_labels) %>%
+  mutate(
+    label_pt = suppressWarnings(st_point_on_surface(geometry)),
+    coords   = suppressWarnings(st_coordinates(label_pt)),
+    x = coords[,1],
+    y = coords[,2],
+    label = paste0(NAME, " (", top10_districts, ")")
+  )
+
+```
+
+```{r Map Build - Continuous w/ Deciles Map}
+# Create Map
+p_tx_score_decile_map <- ggplot() +
+  # Base SDs
+  geom_sf(
+    data = tx_sd_scored_deciles,
+    aes(fill = score_decile_lbl),
+    color = "white", linewidth = 0.18, alpha = alpha_fill
+  ) +
+  # Add CBSAs
+  geom_sf(data = cbsa_tx, fill = NA, color = "grey10", linewidth = 0.35, alpha = 0.5) + # This is kind of hard to see, what about using a non-grey scale color
+    # CBSA callout labels
+  ggrepel::geom_label_repel(
+    data = cbsa_labels,
+    aes(x = x, y = y, label = label),
+    size = 3,
+    seed = 123,
+    fill = scales::alpha("white", 0.65),
+    label.size = 0.2,
+    min.segment.length = 0,
+    max.overlaps = Inf
+  ) +
+  
+  # TX Boundary
+  geom_sf(data = tx_boundary, fill = NA, color = "white",  linewidth = 0.8) +
+  geom_sf(data = tx_boundary, fill = NA, color = "grey30", linewidth = 0.45) +
+  # Adds black over the SDs
+  # geom_sf(data = tx_sd_scored_deciles, fill = NA, color = "grey25", linewidth = 0.16) +
+  # geom_sf(data = topN_outline, fill = NA, color = "black", linewidth = 0.55) +
+  scale_fill_viridis_d(
+    option = "viridis",
+    direction = -1,        # reverse so Top 10% becomes darkest
+    name   = "Lead Score\n(deciles)",
+    na.value = "grey90"
+  ) +
+  coord_sf(xlim = xlim, ylim = ylim, expand = FALSE, clip = "on") +
+  labs(
+    title    = "Texas School District Lead Score",
+    subtitle = "Fill: Lead score deciles (Top 10% darkest). Labels show CBSAs with the strongest clusters of high-scoring districts."
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    axis.text    = element_blank(),
+    axis.title   = element_blank(),
+    axis.ticks   = element_blank(),
+    panel.grid   = element_blank(),
+    legend.title = element_text(face = "bold")
+  )
+
+p_tx_score_decile_map
+```
+
+
+```{r Export Decile Map}
+ggsave(paste0(output, "/tx_sd_score_decile_map.png"), p_tx_score_decile_map,
+       width = 12, height = 8, dpi = 300,
+       bg = "white",
+  device = ragg::agg_png)
+```
+

@@ -101,5 +101,73 @@ meta_tea_budget_object <- meta_tea_budget_object_raw %>%
 
 
 ## District Master ----
-tea_district_master_2025 <- read_csv(paste0(bronze, "/tea/tea_district_school_master.csv"))
+tea_school_master_2025_raw <- read_csv(paste0(bronze, "/tea/tea_district_school_master.csv")) %>%
+  janitor::clean_names()
 
+## ESEA Title 1 ----
+### FY2024 ----
+title_1_tx_2024_raw <- read_excel(paste0(bronze, "/tea/fy2024-esea-title-1-tables-texas-109667.xlsx"),
+                              skip = 1) %>%
+  janitor::clean_names() %>%
+  filter(!is.na(lea_id)) %>%
+  mutate(lea_id = as.character(lea_id))
+
+## TEA Econ Disadvantage Report
+tea_econ_disadvantage_raw <- read_csv(paste0(bronze, "/tea/Economically Disadvantaged Report_Statewide_Districts_2024-2025.csv"),
+                                  skip = 4) %>%
+  janitor::clean_names() %>%
+  filter(!is.na(county_name)) 
+
+# Build District List ----
+## We will use the District Master as our Source, gathering key info
+
+## Prep Data ----
+tea_district_master_2025 <- tea_district_master_2025_raw %>%
+  group_by(county_number, county_name, district_number, district_name, district_city,
+           district_zip, district_type, nces_district_id, district_enrollment_as_of_oct_2024) %>%
+  summarize(number_of_schools = n(),
+            avg_school_enrollment = mean(school_enrollment_as_of_oct_2024, na.rm = TRUE)) %>%
+  ungroup() %>%
+  mutate(county_number = str_remove(county_number, "^'"),
+         district_number = str_remove(district_number, "^'"),
+         nces_district_id = str_remove(nces_district_id, "^'"))
+  
+title_1_tx_2024 <- title_1_tx_2024_raw %>%
+  select(lea_id, lea_name, allocations = fy_2024_title_i_allocation_in_dollars_1) %>%
+  mutate(year = 2024L)
+
+
+tea_econ_disadvantage <- tea_econ_disadvantage_raw %>%
+  mutate(eligible_for_free_meals_count = na_if(eligible_for_free_meals_count, -999),
+         eligible_for_free_meals_percent = na_if(eligible_for_free_meals_percent, -999),
+         eligible_for_reduced_price_meals_count = na_if(eligible_for_reduced_price_meals_count, -999),
+         eligible_for_reduced_price_meals_percent = na_if(eligible_for_reduced_price_meals_percent, -999),
+         other_economically_disadvantaged_count = na_if(other_economically_disadvantaged_count, -999),
+         other_economically_disadvantaged_percent = na_if(other_economically_disadvantaged_percent, -999),
+         not_economically_disadvantaged_count = na_if(not_economically_disadvantaged_count, -999),
+         not_economically_disadvantaged_percent = na_if(not_economically_disadvantaged_percent, -999)
+         ) %>%
+  mutate(econ_disadvatange_count = 
+           eligible_for_free_meals_count +
+           eligible_for_reduced_price_meals_count +
+           other_economically_disadvantaged_count,
+         econ_disadvatange_share = econ_disadvatange_count / total_count,
+         economically_disadvantaged_percent = 100 - not_economically_disadvantaged_percent
+           ) %>%
+  select(region:charter_status, total_count, not_economically_disadvantaged_percent,
+         economically_disadvantaged_percent)
+
+## Final Master List ----
+tx_districts_2025 <- tea_district_master_2025 %>%
+  left_join(title_1_tx_2024, by = c("nces_district_id" = "lea_id")) %>%
+  left_join(tea_econ_disadvantage %>% select(district_number, charter_status,
+                                             total_count, not_economically_disadvantaged_percent, economically_disadvantaged_percent), 
+            by = c("district_number" = "district_number")) %>%
+  mutate(year = 2024L)
+
+dbWriteTable(con, 
+             DBI::Id(schema = "silver", table = "tx_tea_district_metrics"),
+             tx_districts_2025, 
+             overwrite = TRUE)
+
+dbDisconnect(con, shutdown = TRUE)

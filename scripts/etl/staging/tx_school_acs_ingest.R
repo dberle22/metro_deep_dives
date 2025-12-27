@@ -155,55 +155,56 @@ school_tx_acs_raw <- acs_ingest(
   output    = "wide"
 )
 
+school_tx_acs_clean <- standardize_acs_df(school_tx_acs_raw, 
+                                          "School District (Unified)",
+                                          drop_e = TRUE)
+
+school_tx_acs_metrics <- school_tx_acs_clean %>%
+  transmute(
+    geo_level = geo_level,
+    geo_id = geo_id,
+    geo_name = geo_name,
+    year = year,
+    population = pop_total,
+    median_age = median_age,
+    median_income = median_income,
+    child_poverty_rate = (
+    pov_below_male_u5 + pov_below_male_5 + pov_below_male_6_11 +
+    pov_below_male_12_14 + pov_below_male_15 + pov_below_male_16_17 +
+    pov_below_female_u5 + pov_below_female_5 + pov_below_female_6_11 +
+    pov_below_female_12_14 + pov_below_female_15 + pov_below_female_16_17
+  ) / (
+    pop_age_male_under5 + pop_age_male_5_9 + pop_age_male_10_14 + 
+      pop_age_male_15_17 +
+      pop_age_female_under5 + pop_age_female_5_9 + pop_age_female_10_14 + 
+      pop_age_female_15_17
+  ),
+  edu_assoc_share = edu_associates / edu_total_25p,
+  edu_bach_share = edu_bachelors / edu_total_25p,
+  edu_masters_plus = 
+    (edu_masters + edu_professional + edu_doctorate) / edu_total_25p,
+  edu_no_higher_ed = 1 - (edu_assoc_share + edu_bach_share + edu_masters_plus),
+  households_w_children_share = households_w_children / total_households,
+    # Diversity - Calculate Race Shares then get the sum of squares 
+  white_nonhisp_share = white_nonhisp / pop_total_b03002,
+  black_nonhisp_share        = black_nonhisp / pop_total_b03002,
+  amind_nonhisp_share        = amind_nonhisp / pop_total_b03002,
+  asian_nonhisp_share        = asian_nonhisp / pop_total_b03002,
+  pacisl_nonhisp_share       = pacisl_nonhisp / pop_total_b03002,
+  other_nonhisp_share        = other_nonhisp / pop_total_b03002,
+  two_plus_nonhisp_share     = two_plus_nonhisp / pop_total_b03002,
+  hispanic_any_share         = hispanic_any / pop_total_b03002,
+  racial_diversity_index = white_nonhisp_share^2 + black_nonhisp_share^2 + amind_nonhisp_share ^2 +
+    asian_nonhisp_share^2 + pacisl_nonhisp_share^2 + other_nonhisp_share^2 + 
+    two_plus_nonhisp_share^2 + hispanic_any_share^2
+  )
 
 
-# Tract ----
-# FL
-tract_fl_acs_age_raw <- acs_ingest(
-  geography = "tract",
-  state = 'FL',
-  years     = 2012:2023,
-  variables = vars_age_sex,
-  survey    = "acs5",
-  output    = "wide"
-)
 
 # Name tables Source <> KPI <> Gran
 dbWriteTable(con, 
-             DBI::Id(schema = "staging", table = "acs_age_tract_fl"),
-             tract_fl_acs_age_raw, 
-             overwrite = TRUE)
-
-# NC
-tract_nc_acs_age_raw <- acs_ingest(
-  geography = "tract",
-  state = 'NC',
-  years     = 2012:2023,
-  variables = vars_age_sex,
-  survey    = "acs5",
-  output    = "wide"
-)
-
-# Name tables Source <> KPI <> Gran
-dbWriteTable(con, 
-             DBI::Id(schema = "staging", table = "acs_age_tract_nc"),
-             tract_nc_acs_age_raw, 
-             overwrite = TRUE)
-
-# GA
-tract_ga_acs_age_raw <- acs_ingest(
-  geography = "tract",
-  state = 'GA',
-  years     = 2012:2023,
-  variables = vars_age_sex,
-  survey    = "acs5",
-  output    = "wide"
-)
-
-# Name tables Source <> KPI <> Gran
-dbWriteTable(con, 
-             DBI::Id(schema = "staging", table = "acs_age_tract_ga"),
-             tract_ga_acs_age_raw, 
+             DBI::Id(schema = "silver", table = "acs_tx_school_metrics"),
+             school_tx_acs_metrics, 
              overwrite = TRUE)
 
 dbDisconnect(con, shutdown = TRUE)

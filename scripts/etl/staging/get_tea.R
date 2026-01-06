@@ -122,13 +122,14 @@ tea_econ_disadvantage_raw <- read_csv(paste0(bronze, "/tea/Economically Disadvan
 ## We will use the District Master as our Source, gathering key info
 
 ## Prep Data ----
-tea_district_master_2025 <- tea_district_master_2025_raw %>%
-  group_by(county_number, county_name, district_number, district_name, district_city,
+tea_district_master_2025 <- tea_school_master_2025_raw %>%
+  group_by(county_number, county_name, esc_region_served, district_number, district_name, district_city,
            district_zip, district_type, nces_district_id, district_enrollment_as_of_oct_2024) %>%
   summarize(number_of_schools = n(),
             avg_school_enrollment = mean(school_enrollment_as_of_oct_2024, na.rm = TRUE)) %>%
   ungroup() %>%
   mutate(county_number = str_remove(county_number, "^'"),
+         esc_region_served = str_remove(esc_region_served, "^'"),
          district_number = str_remove(district_number, "^'"),
          nces_district_id = str_remove(nces_district_id, "^'"))
   

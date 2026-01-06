@@ -8,6 +8,7 @@ create or replace table metro_deep_dive.gold.tx_isd_metrics as
 with isd_base as (
 select county_number,
 	county_name,
+	esc_region_served,
 	district_number,
 	nces_district_id,
 	district_name,
@@ -53,6 +54,7 @@ joined_table as (
 select isd.district_name,
 	isd.county_number,
 	isd.county_name,
+	isd.esc_region_served,
 	isd.district_city,
 	isd.district_zip,
 	isd.district_type,
@@ -114,6 +116,7 @@ where population_growth_5yr is not null
 select jt.district_name,
 	county_number,
 	county_name,
+	esc_region_served,
 	district_city,
 	district_zip,
 	district_type,
@@ -126,7 +129,7 @@ select jt.district_name,
 	title_1_allocations,
 	allocations_per_student,
 	student_allocation_pct_rank,
-	jt.economically_disadvantaged_percent,
+	jt.economically_disadvantaged_percent / 100 as economically_disadvantaged_percent,
 	economic_disadvantaged_pct_rank,
 	population,
 	jt.population_growth_5yr,
@@ -170,5 +173,9 @@ from joined_table jt
 left join econ_rank eco 
 	on jt.nces_district_id = eco.nces_district_id
 left join pop_growth_rank pop 
-	on jt.nces_district_id = pop.nces_district_id
-
+	on jt.nces_district_id = pop.nces_district_id;
+	
+	
+select *
+from metro_deep_dive.gold.tx_isd_metrics 
+where district_name = 'WYLIE ISD'

@@ -321,5 +321,17 @@ p_tx_tier_map <- ggplot() +
 print(p_tx_tier_map)
 ```
 
+```{r Save RDS files for future reference}
+saveRDS(tx_boundary, paste0(data, "/demographics/gold/tx_isd/tx_boundary_sf.rds"))
+
+saveRDS(tx_sd_unified, paste0(data, "/demographics/gold/tx_isd/tx_sd_unified_sf.rds"))
+
+saveRDS(cbsa_sf, paste0(data, "/demographics/gold/tx_isd/cbsa_sf.rds"))
+
+write_csv(tx_isd_metrics_clean, paste0(data, "/demographics/gold/tx_isd/tx_isd_metrics.csv"))
+
+saveRDS(tx_sd_scored, paste0(data, "/demographics/gold/tx_isd/tx_sd_cored_sf.rds"))
+
+```
 
 

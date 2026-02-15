@@ -63,7 +63,7 @@ vars <- c(
 # US ----
 us_acs_raw <- acs_ingest(
   geography = "us",
-  years     = 2012:2023,
+  years     = 2012:2024,
   variables = vars,
   survey    = "acs5",
   output    = "wide"
@@ -78,7 +78,7 @@ dbWriteTable(con,
 # Region ----
 region_acs_raw <- acs_ingest(
   geography = "region",
-  years     = 2012:2023,
+  years     = 2012:2024,
   variables = vars,
   survey    = "acs5",
   output    = "wide"
@@ -94,7 +94,7 @@ dbWriteTable(con,
 # Division ----
 division_acs_raw <- acs_ingest(
   geography = "division",
-  years     = 2012:2023,
+  years     = 2012:2024,
   variables = vars,
   survey    = "acs5",
   output    = "wide"
@@ -109,7 +109,7 @@ dbWriteTable(con,
 # State ----
 state_acs_raw <- acs_ingest(
   geography = "state",
-  years     = 2012:2023,
+  years     = 2012:2024,
   variables = vars,
   survey    = "acs5",
   output    = "wide"
@@ -124,7 +124,7 @@ dbWriteTable(con,
 # County ----
 county_acs_raw <- acs_ingest(
   geography = "county",
-  years     = 2012:2023,
+  years     = 2012:2024,
   variables = vars,
   survey    = "acs5",
   output    = "wide"
@@ -139,7 +139,7 @@ dbWriteTable(con,
 # ZCTA ----
 zcta_acs_raw <- acs_ingest(
   geography = "zcta",
-  years     = 2012:2023,
+  years     = 2012:2024,
   variables = vars,
   survey    = "acs5",
   output    = "wide"
@@ -154,7 +154,7 @@ dbWriteTable(con,
 # Place ----
 place_acs_raw <- acs_ingest(
   geography = "place",
-  years     = 2012:2023,
+  years     = 2012:2024,
   variables = vars,
   survey    = "acs5",
   output    = "wide"
@@ -171,7 +171,7 @@ dbWriteTable(con,
 tract_fl_acs_raw <- acs_ingest(
   geography = "tract",
   state = 'FL',
-  years     = 2012:2023,
+  years     = 2012:2024,
   variables = vars,
   survey    = "acs5",
   output    = "wide"
@@ -187,7 +187,7 @@ dbWriteTable(con,
 tract_nc_acs_raw <- acs_ingest(
   geography = "tract",
   state = 'NC',
-  years     = 2012:2023,
+  years     = 2012:2024,
   variables = vars,
   survey    = "acs5",
   output    = "wide"
@@ -203,7 +203,7 @@ dbWriteTable(con,
 tract_ga_acs_raw <- acs_ingest(
   geography = "tract",
   state = 'GA',
-  years     = 2012:2023,
+  years     = 2012:2024,
   variables = vars,
   survey    = "acs5",
   output    = "wide"
@@ -213,6 +213,22 @@ tract_ga_acs_raw <- acs_ingest(
 dbWriteTable(con, 
              DBI::Id(schema = "staging", table = "acs_edu_tract_ga"),
              tract_ga_acs_raw, 
+             overwrite = TRUE)
+
+# SC
+tract_sc_acs_raw <- acs_ingest(
+  geography = "tract",
+  state = 'SC',
+  years     = 2012:2024,
+  variables = vars,
+  survey    = "acs5",
+  output    = "wide"
+)
+
+# Name tables Source <> KPI <> Gran
+dbWriteTable(con, 
+             DBI::Id(schema = "staging", table = "acs_edu_tract_sc"),
+             tract_sc_acs_raw, 
              overwrite = TRUE)
 
 dbDisconnect(con, shutdown = TRUE)

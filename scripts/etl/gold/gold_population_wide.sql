@@ -11,14 +11,20 @@ SELECT geo_level,
 	geo_name,
 	year,
 	pop_total,
-	LAG(pop_total, 1) OVER (PARTITION BY geo_level, geo_id, geo_name ORDER BY year) AS pop_lag1,
-	LAG(pop_total, 5) OVER (PARTITION BY geo_level, geo_id, geo_name ORDER BY year) AS pop_lag5,
-	LAG(pop_total, 10) OVER (PARTITION BY geo_level, geo_id, geo_name ORDER BY year) AS pop_lag10,
+	LAG(pop_total, 1) OVER (PARTITION BY geo_level, geo_id ORDER BY year) AS pop_lag1,
+	LAG(pop_total, 3) OVER (PARTITION BY geo_level, geo_id ORDER BY year) AS pop_lag3,
+	LAG(pop_total, 5) OVER (PARTITION BY geo_level, geo_id ORDER BY year) AS pop_lag5,
+	LAG(pop_total, 10) OVER (PARTITION BY geo_level, geo_id ORDER BY year) AS pop_lag10,
 	CASE 
    	WHEN pop_lag1 > 0 THEN
         (pop_total - pop_lag1) / pop_lag1 
     ELSE NULL
 	END AS pop_growth_1yr,
+	CASE 
+   	WHEN pop_lag3 > 0 THEN
+        (pop_total - pop_lag3) / pop_lag3
+    ELSE NULL
+	END AS pop_growth_3yr,
 	CASE 
    	WHEN pop_lag5 > 0 THEN
         (pop_total - pop_lag5) / pop_lag5
@@ -29,6 +35,11 @@ SELECT geo_level,
         (pop_total - pop_lag10) / pop_lag10
     ELSE NULL
 	END AS pop_growth_10yr,
+	CASE 
+   	WHEN pop_lag3 > 0 THEN
+        POWER(pop_total * 1.0 / pop_lag3, 1.0 / 5.0) - 1
+    ELSE NULL
+	END AS pop_cagr_3yr,
 	CASE 
    	WHEN pop_lag5 > 0 THEN
         POWER(pop_total * 1.0 / pop_lag5, 1.0 / 5.0) - 1
@@ -88,9 +99,11 @@ select p.geo_level,
 	p.year,
 	p.pop_total,
 	pop_growth_1yr,
+	pop_growth_3yr,
 	pop_growth_5yr,
-	pop_cagr_5yr,
 	pop_growth_10yr,
+	pop_cagr_3yr,
+	pop_cagr_5yr,
 	pop_cagr_10yr,
 	median_age,
 	pct_age_under_18,

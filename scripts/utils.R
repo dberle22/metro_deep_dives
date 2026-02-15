@@ -19,6 +19,8 @@ library(readxl)
 library(bea.R)
 library(here)
 library(DBI)
+library(blob)
+library(spatial)
 
 # Reproducibility ----
 set.seed(42)

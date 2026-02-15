@@ -49,3 +49,23 @@ select *
 from metro_deep_dive.gold.population_demographics pd 
 where lower(geo_level) in ('county', 'state', 'region')
 and year = '2023'
+;
+
+
+
+DESCRIBE metro_deep_dive.gold.population_demographics; -- Contains year, pop, growth
+
+DESCRIBE metro_deep_dive.gold.economics_income_wide; -- Contains Incomes
+
+-- Housing KPI contains rents, home values, costs, vacancy, rent burdens
+
+-- Transport KPI contains PCT Commute including WFH, Mean Travel Times
+
+-- BPS contains units, bldgs, avg_unts_per_bldg, structure_mix
+
+SELECT DISTINCT cbsa_code, cbsa_name
+FROM metro_deep_dive.silver.xwalk_cbsa_county
+WHERE lower(cbsa_name) LIKE '%jacksonville%';
+
+SELECT distinct geo_level
+FROM metro_deep_dive.silver.bps_wide bw 

@@ -21,6 +21,7 @@ library(here)
 library(DBI)
 library(blob)
 library(spatial)
+library(gt)
 
 # Reproducibility ----
 set.seed(42)

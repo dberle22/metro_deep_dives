@@ -79,7 +79,7 @@ cbsa_veh <- sum_pops_by_cbsa(
 cbsa_weighted_avg <- cbsa_base %>%
   dplyr::group_by(cbsa_code, cbsa_name, year) %>%
   dplyr::summarise(
-    mean_travel_timeE = stats::weighted.mean(mean_travel_timeE, commute_workers_totalE, na.rm = TRUE),
+    total_travel_timeE = sum(total_travel_timeE, na.rm = TRUE),
     .groups = "drop"
   )
 
@@ -92,7 +92,7 @@ cbsa_acs_clean <- cbsa_commute %>%
   mutate(geo_level = "cbsa") %>%
   select(geo_level, geo_id = cbsa_code, geo_name = cbsa_name, year,
          commute_workers_totalE:commute_worked_homeE, 
-         veh_total_hhE:veh_4_plusE, mean_travel_timeE)
+         veh_total_hhE:veh_4_plusE, total_travel_timeE)
 
 ## Union Tracts together ---- 
 tract_all_clean <- dplyr::bind_rows(
@@ -141,7 +141,8 @@ transport_silver_kpi <- all_acs_clean %>%
     veh_4_plus   = veh_4_plusE,
     
     # travel time
-    mean_travel_time = mean_travel_timeE
+    total_travel_time = total_travel_timeE,
+    mean_travel_time = total_travel_timeE / commute_workers_totalE
   ) %>%
   # commute shares
   mutate(
@@ -177,6 +178,7 @@ transport_silver_kpi <- all_acs_clean %>%
     pct_hh_2_vehicles, pct_hh_3_vehicles, pct_hh_4p_vehicles,
     
     # travel time
+    total_travel_time,
     mean_travel_time
   )
 

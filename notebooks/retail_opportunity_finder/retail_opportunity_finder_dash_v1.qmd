@@ -1,0 +1,834 @@
+---
+title: "Retail Opportunity Finder (V1) – Jacksonville, FL"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    theme: cosmo
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+## Setup & Approach
+
+This notebook screens for **retail corridor opportunity** inside a target metro by moving from *where demand is forming* to *which assets to underwrite*. We follow a simple funnel:
+
+1.  Assemble tract-level indicators that reflect demand growth, capacity to add new buildings, and price pressure
+2.  Apply transparent eligibility gates to narrow the search space
+3.  Rank the remaining tracts with a weighted score aligned to the thesis
+4.  Dissolve top tracts into contiguous “zones” that behave like sub-markets
+5.  Overlay parcel data to identify existing retail corridors and produce a shortlist of retail parcels inside the highest-potential zones
+
+The output is designed to be repeatable across metros: a tract ranking table, a zone map with summaries, and a parcel shortlist that can be used for deeper due diligence.
+
+We focus on a small set of metrics that consistently show up in retail corridor formation. At the tract level, we measure:
+
+-   **Demand growth:** **5-year population growth** (ACS 2019 5-year → 2024 5-year) to identify where the customer base is expanding.
+
+-   Ability to add buildings:
+
+    -   **Density/headroom** (lower density suggests more room for future development)
+
+    -   **Housing supply tailwind** using **BPS estimated units per 1,000 residents** (3-year rolling average, applied at the county level in V1)
+
+-   **Not already priced-in:** a **housing cost pressure proxy** that blends **median rent + median home value** using within-metro percentiles, with a screen to exclude the most expensive tracts (top 30%).
+
+-   **Supporting context:** **Commute intensity** (mean commute minutes × (1 − % work-from-home)) to capture daily movement patterns without letting it dominate the model.
+
+These inputs feed two steps in the workflow: (1) **eligibility gates** that narrow the tract universe to places that match the thesis, and (2) a **simple weighted score** that ranks the remaining tracts so we can focus zone creation and parcel screening on the most promising corridors.
+
+```{r}
+#| label: setup
+#| include: false
+
+# Find our current directory 
+getwd()
+
+# Set up our environment ----
+# Read our common libraries & set other packages
+source(here::here("scripts", "utils.R"))
+
+# Set paths for our environments
+# Make sure we're reading from the project Renviron
+if (file.exists(".Renviron")) readRenviron(".Renviron")
+
+# Set our Paths - Pointing to our Bronze folder in Data
+bronze_acs <- get_env_path("DATA_DEMO_RAW")
+data <- get_env_path("DATA")
+db_path <- paste0(data, "/duckdb", "/metro_deep_dive.duckdb")
+project <- get_env_path("METRO")
+
+```
+
+```{r}
+#| label: config
+#| include: false
+
+# Connect to the DB ----
+con <- dbConnect(duckdb::duckdb(), dbdir = db_path, read_only = FALSE)
+
+# Spatial is already installed; load it
+dbExecute(con, "LOAD spatial;")
+
+# Jacksonville, FL CBSA code
+cbsa_code <- "27260"
+
+# (Optional for later once you parameterize SQL)
+target_year <- 2024
+```
+
+```{r}
+#| label: sql-helpers
+#| include: false
+
+read_sql_file <- function(path) {
+  paste(readLines(path, warn = FALSE), collapse = "\n")
+}
+
+query_df_sql_file <- function(con, sql_path) {
+  sql <- read_sql_file(sql_path)
+  dbGetQuery(con, sql)
+}
+```
+
+### Load Data
+
+Here we load in all of our required data for making the analysis possible:
+
+-   Tract Features - A table with all tracts in the target CBSA and all key KPIs including Population Growth, Density, Home Value, Rent, Commute, etc.
+
+-   CBSA Geom
+
+-   County Geom
+
+-   Tract Geom
+
+-   Parcel Data
+
+```{r}
+#| label: load-tract-features
+#| include: false
+
+tract_features <- query_df_sql_file(con, paste0(project, "/notebooks/retail_opportunity_finder/tract_features.sql"))
+
+glimpse(tract_features)
+tract_features %>% count(eligible_v1)
+```
+
+```{r}
+#| label: validate-tract-features
+#| include: false
+
+stopifnot(nrow(tract_features) == dplyr::n_distinct(tract_features$tract_geoid))
+
+tract_features %>%
+  summarise(
+    n = n(),
+    pct_density_null = mean(is.na(pop_density)),
+    pct_rent_null = mean(is.na(median_gross_rent)),
+    pct_value_null = mean(is.na(median_home_value))
+  )
+```
+
+```{r}
+#| label: load-cbsa-features
+#| include: false
+
+cbsa_features <- query_df_sql_file(con, paste0(project, "/notebooks/retail_opportunity_finder/cbsa_features.sql"))
+```
+
+```{r}
+#| label: load-cbsa-geom-wkb
+#| include: false
+
+cbsa_wkb <- dbGetQuery(con, glue("
+  SELECT
+    cbsa_code,
+    cbsa_name,
+    ST_AsWKB(geom) AS geom_wkb
+  FROM metro_deep_dive.geo.cbsas
+  WHERE cbsa_code = '{cbsa_code}'
+"))
+
+stopifnot(nrow(cbsa_wkb) == 1)
+
+# DuckDB returns WKB as a blob list-column; unwrap to raw
+wkb1 <- cbsa_wkb$geom_wkb[[1]]
+if (inherits(wkb1, 'blob')) wkb1 <- wkb1[[1]]
+
+cbsa_geom <- st_as_sfc(structure(list(wkb1), class = "WKB"), crs = 4326)
+
+cbsa_sf <- st_sf(
+  cbsa_code = cbsa_wkb$cbsa_code,
+  cbsa_name = cbsa_wkb$cbsa_name,
+  geometry = cbsa_geom
+)
+
+cbsa_sf
+```
+
+Ingest Tract data and join to our tract feature data frame
+
+```{r}
+#| label: load-tract-geom-wkb
+#| include: false
+
+tract_wkb <- dbGetQuery(con, glue("
+WITH cbsa_counties AS (
+  SELECT DISTINCT
+    county_geoid,
+    cbsa_code
+  FROM metro_deep_dive.silver.xwalk_cbsa_county
+  WHERE cbsa_code = '{cbsa_code}'  -- '{{cbsa_code}}'
+),
+
+tracts AS (
+  SELECT
+    tract_geoid,
+    printf('%02d%03d', CAST(state_fip AS INTEGER), CAST(county_fip AS INTEGER)) AS county_geoid
+  FROM metro_deep_dive.silver.xwalk_tract_county
+),
+
+tracts_final as (
+SELECT
+  t.tract_geoid,
+  t.county_geoid,
+  c.cbsa_code
+FROM tracts t
+JOIN cbsa_counties c
+  ON t.county_geoid = c.county_geoid
+ORDER BY t.tract_geoid
+)
+
+select geo.tract_geoid,
+	geo.tract_name,
+	geo.county_geoid,
+	geo.state_fips,
+	tr.cbsa_code,
+	geo.geom_wkb,
+	geo.geom
+from metro_deep_dive.geo.tracts_fl geo 
+inner join tracts_final tr 
+	on geo.tract_geoid = tr.tract_geoid
+"))
+
+wkb_list <- tract_wkb$geom_wkb
+if (inherits(wkb_list, "blob")) wkb_list <- lapply(wkb_list, function(x) x)
+
+tract_geom <- st_as_sfc(structure(wkb_list, class = "WKB"), crs = 4326)
+
+tract_geom_sf <- st_sf(
+  tract_geoid = tract_wkb$tract_geoid,
+  geometry = tract_geom
+)
+
+# Join features to geometry
+tract_sf <- tract_geom_sf %>%
+  left_join(tract_features, by = "tract_geoid")
+```
+
+```{r}
+#| label: load-county-geom-wkb
+#| include: false
+
+county_wkb <- dbGetQuery(con, glue("
+
+WITH cbsa_counties AS (
+  SELECT DISTINCT
+    county_geoid,
+    cbsa_code
+  FROM metro_deep_dive.silver.xwalk_cbsa_county
+  WHERE cbsa_code = '{cbsa_code}'  -- '{{cbsa_code}}'
+)
+
+SELECT cb.county_geoid, 
+	cb.cbsa_code,
+	c.geom_wkb,
+	c.geom 
+FROM metro_deep_dive.geo.counties c  
+INNER JOIN cbsa_counties cb 
+	ON c.GEOID  = cb.county_geoid
+"))
+
+# Convert WKB list -> sfc
+wkb_list <- county_wkb$geom_wkb
+if (inherits(wkb_list, "blob")) wkb_list <- lapply(wkb_list, function(x) x)
+
+county_geom <- st_as_sfc(structure(wkb_list, class = "WKB"), crs = 4326)
+
+county_sf <- st_sf(
+  county_geoid = county_wkb$county_geoid,
+  geometry = county_geom
+)
+
+county_sf
+```
+
+### Quick QA
+
+## Section 2: Target Market Overview
+
+This section provides a quick, decision-oriented snapshot of the Jacksonville metro before we move into tract scoring. The goal is to answer two questions: **(1) Is the metro in a demand-growth regime that supports retail expansion?** and **(2) How does Jacksonville compare to typical metro conditions on the key drivers we use later in the model?** We focus on a small set of metrics that map directly to the corridor thesis, while keeping the story lightweight: growth (new customers), capacity to add rooftops, headroom, and cost pressure.
+
+```{r}
+#| label: section2-kpi-helpers
+#| include: false
+
+library(htmltools)
+library(bslib)
+
+kpi_tile <- function(label, value, subtitle = NULL) {
+  bslib::card(
+    bslib::card_body(
+      tags$div(style = "font-size: 12px; color: #666;", label),
+      tags$div(style = "font-size: 28px; font-weight: 700; line-height: 1.1;", value),
+      if (!is.null(subtitle)) tags$div(style = "font-size: 11px; color: #888; margin-top: 6px;", subtitle)
+    ),
+    style = "height: 120px;"
+  )
+}
+
+format_kpi <- function(x, type = c("num", "pct", "usd", "units", "mins")) {
+  type <- match.arg(type)
+
+  if (is.null(x) || length(x) == 0 || all(is.na(x))) return("NA")
+
+  v <- x[1]
+
+  # Handle percent stored as 12 vs 0.12
+  if (type == "pct" && !is.na(v) && abs(v) > 1) v <- v / 100
+
+  out <- dplyr::case_when(
+    type == "num"   ~ comma(v, accuracy = 1),
+    type == "pct"   ~ percent(v, accuracy = 0.1),
+    type == "usd"   ~ dollar(v, accuracy = 1),
+    type == "units" ~ number(v, accuracy = 0.1),
+    type == "mins"  ~ number(v, accuracy = 0.1),
+    TRUE ~ as.character(v)
+  )
+
+  out
+}
+
+make_tile_gt <- function(label, value, subtitle = NULL) {
+  # A single tile as a small gt table
+  gt(data.frame(x = 1)) |>
+    gt::tab_header(
+      title = gt::md(paste0("**", value, "**")),
+      subtitle = gt::md(paste0(label, if (!is.null(subtitle)) paste0("<br><span style='font-size:11px;color:#666'>", subtitle, "</span>") else ""))
+    ) |>
+    gt::cols_hide(everything()) |>
+    gt::tab_options(
+      table.width = px(220),
+      heading.align = "left",
+      table.font.size = 14,
+      heading.title.font.size = 22,
+      heading.subtitle.font.size = 13,
+      data_row.padding = px(0),
+      table.border.top.style = "solid",
+      table.border.top.width = px(1),
+      table.border.top.color = "#e6e6e6",
+      table.border.bottom.style = "solid",
+      table.border.bottom.width = px(1),
+      table.border.bottom.color = "#e6e6e6"
+    )
+}
+
+```
+
+### Section 2.1: Metro KPI snapshot
+
+**What this shows:** A small set of headline numbers for Jacksonville that serve as the baseline for the rest of the report.
+
+**How to read it:** Each tile is one metric measured on a consistent vintage (ACS 2024 5-year for current levels, and 2019→2024 for 5-year change where relevant). Use this panel to anchor your expectations before you see the tract maps.
+
+**Why it matters:** These KPIs are the same building blocks we use later to screen and rank tracts. If the metro-level conditions don’t support the thesis, the tract-level model will likely surface fewer strong zones.
+
+**Key callouts (fill in):**
+
+-   **Population / growth:** Jacksonville’s 5-year population growth is **\[X%\]**, which is **\[above/below\]** the reference benchmarks.
+
+-   **Housing supply tailwind:** Estimated units per 1k (3-year average) is **\[X.X\]**, indicating **\[strong/moderate/weak\]** recent housing pipeline momentum.
+
+-   **Cost pressure:** Median rent and home value suggest **\[moderate/high/low\]** cost pressure at the metro level, which affects where we expect “not priced-in” tracts to exist.
+
+```{r}
+#| label: kpi-tiles-data
+#| include: false
+
+
+# Set target year and CBSA Code
+target_year <- 2024
+target_cbsa_code <- "27260"
+
+# Use your cbsa-level features dataset (from SQL)
+jax_row <- cbsa_features %>%
+  filter(cbsa_code == target_cbsa_code, year == target_year) %>%
+  slice(1)
+
+stopifnot(nrow(jax_row) == 1)
+
+# Map to the KPI fields we want (rename for clarity)
+jax_kpis <- jax_row %>%
+  transmute(
+    Population = pop_total,
+    `Pop growth (5y)` = pop_growth_5yr,
+    `Units per 1k (3y avg)` = bps_units_per_1k_3yr_avg,
+    `Median rent` = median_gross_rent,
+    `Median home value` = median_home_value,
+    `Mean commute (min)` = mean_travel_time
+  )
+
+jax_kpis
+
+# Format for tiles
+tiles <- list(
+  pop   = list(label = "Population (2024)", value = format_kpi(jax_kpis$Population, "num")),
+  grow  = list(label = "Pop growth (5y)", value = format_kpi(jax_kpis$`Pop growth (5y)`, "pct")),
+  units = list(label = "Units per 1k (3y avg)", value = format_kpi(jax_kpis$`Units per 1k (3y avg)`, "units")),
+  rent  = list(label = "Median rent", value = format_kpi(jax_kpis$`Median rent`, "usd")),
+  value = list(label = "Median home value", value = format_kpi(jax_kpis$`Median home value`, "usd")),
+  comm  = list(label = "Mean commute", value = paste0(format_kpi(jax_kpis$`Mean commute (min)`, "mins"), " min"))
+)
+```
+
+```{r}
+#| label: kpi-tiles
+#| echo: false
+
+tiles_ui <- list(
+  kpi_tile("Population (2024)", tiles$pop$value),
+  kpi_tile("Pop growth (5y)", tiles$grow$value, "2019→2024 (ACS 5-year)"),
+  kpi_tile("Units per 1k (3y avg)", tiles$units$value, "BPS rolling avg"),
+  kpi_tile("Median rent", tiles$rent$value),
+  kpi_tile("Median home value", tiles$value$value),
+  kpi_tile("Mean commute", tiles$comm$value)
+)
+
+bslib::layout_column_wrap(
+  width = 1/3,   # 3 tiles per row
+  !!!tiles_ui
+)
+```
+
+### Section 2.1: Visual B: Peer ranking table 
+
+```{r}
+#| label: peer-ranking-data
+#| include: false
+
+peer_cbsa_codes <- c(
+  "27260", # Jacksonville
+  "48900", # Wilmington
+  "42340", # Savannah
+  "39580", # Raleigh
+  "24860"  # Greenville
+)
+
+peer_tbl <- cbsa_features |>
+  filter(cbsa_code %in% peer_cbsa_codes, year == target_year) |>
+  transmute(
+    metro_name = cbsa_name,
+    pop_growth_5yr = pop_growth_5yr,
+    pop_growth_rank = region_pop_growth_5yr_rank,
+    units_per_1k_3yr = bps_units_per_1k_3yr_avg,
+    units_per_1k_rank = region_units_1k_avg_rank,
+    median_rent = median_gross_rent,
+    median_rent_rank = region_gross_rent_rank,
+    median_home_value = median_home_value,
+    home_value_rank = region_home_value_rank,
+    mean_travel_time = round(mean_travel_time, 2),
+    mean_travel_time_rank = region_travel_time_rank
+  )
+
+peer_tbl
+```
+
+```{r}
+#| label: peer-ranking-gt
+#| echo: false
+
+peer_tbl |>
+  arrange(pop_growth_rank) |>
+  gt(rowname_col = "metro_name") |>
+  tab_header(title = "Peer context: ranks and raw values (2024)") |>
+  cols_label(
+    pop_growth_rank = "Growth rank",
+    pop_growth_5yr = "Pop growth (5y)",
+    units_per_1k_rank = "Units rank",
+    units_per_1k_3yr = "Units/1k (3y)",
+    median_rent_rank = "Rent rank",
+    median_rent = "Median rent",
+    home_value_rank = "Home value rank",
+    median_home_value = "Median home value",
+    mean_travel_time_rank = "Commute rank",
+    mean_travel_time = "Mean commute"
+  ) |>
+
+  # Formatting (vectorized)
+  fmt_percent(columns = pop_growth_5yr, decimals = 1) |>
+  fmt_number(columns = units_per_1k_3yr, decimals = 1) |>
+  fmt_currency(columns = c(median_rent, median_home_value), currency = "USD", decimals = 0) |>
+  fmt_number(columns = mean_travel_time, decimals = 1, suffixing = FALSE) |>
+
+  # Add "min" suffix to commute time
+  fmt(
+    columns = mean_travel_time,
+    fns = function(x) paste0(x, " min")
+  ) |>
+
+  # Make ranks look like ranks
+  cols_align(align = "center", columns = ends_with("_rank")) |>
+  cols_align(align = "right",  columns = c(pop_growth_5yr, units_per_1k_3yr, median_rent, median_home_value, mean_travel_time)) |>
+
+  tab_options(
+    table.font.size = 12,
+    data_row.padding = px(3),
+    column_labels.font.weight = "600"
+  )
+```
+
+### Section 2.1: Benchmark comparison table
+
+```{r}
+#| label: benchmark-jax-row
+#| include: false
+
+jax_row <- cbsa_features %>%
+  filter(cbsa_code == target_cbsa_code, year == target_year) %>%
+  slice(1) %>%
+  transmute(
+    geo_level = "metro",
+    geo_name  = cbsa_name,
+    year,
+    population = pop_total,
+    pop_growth_5yr = pop_growth_5yr,
+    units_per_1k_3yr = bps_units_per_1k_3yr_avg,
+    median_gross_rent = median_gross_rent,
+    median_home_value = median_home_value,
+    mean_travel_time = mean_travel_time
+  )
+
+stopifnot(nrow(jax_row) == 1)
+jax_row
+```
+
+```{r}
+#| label: benchmark-in-r
+#| include: false
+
+region_bench <- cbsa_features %>%
+  filter(year == target_year, census_division == "South Atlantic") %>%
+  summarise(
+    geo_level = "region",
+    geo_name  = "South Atlantic",
+    year = target_year,
+    population = mean(pop_total, na.rm = TRUE),
+    pop_growth_5yr = weighted.mean(pop_growth_5yr, pop_total, na.rm = TRUE),
+    units_per_1k_3yr = weighted.mean(bps_units_per_1k_3yr_avg, pop_total, na.rm = TRUE),
+    median_gross_rent = weighted.mean(median_gross_rent, pop_total, na.rm = TRUE),
+    median_home_value = weighted.mean(median_home_value, pop_total, na.rm = TRUE),
+    mean_travel_time = weighted.mean(mean_travel_time, pop_total, na.rm = TRUE)
+  )
+
+us_bench <- cbsa_features %>%
+  filter(year == target_year) %>%
+  summarise(
+    geo_level = "us",
+    geo_name  = "United States (CBSAs)",
+    year = target_year,
+    population = mean(pop_total, na.rm = TRUE),
+    pop_growth_5yr = weighted.mean(pop_growth_5yr, pop_total, na.rm = TRUE),
+    units_per_1k_3yr = weighted.mean(bps_units_per_1k_3yr_avg, pop_total, na.rm = TRUE),
+    median_gross_rent = weighted.mean(median_gross_rent, pop_total, na.rm = TRUE),
+    median_home_value = weighted.mean(median_home_value, pop_total, na.rm = TRUE),
+    mean_travel_time = weighted.mean(mean_travel_time, pop_total, na.rm = TRUE)
+  )
+```
+
+```{r}
+#| label: benchmark-assemble
+#| include: false
+
+# Choose one: bench_tbl (SQL) OR bind_rows(region_bench, us_bench)
+bench_rows <- bind_rows(region_bench, us_bench) %>%
+  as_tibble()
+
+bench_comp <- bind_rows(
+  jax_row,
+  bench_rows
+) %>%
+  # ensure consistent row order
+  mutate(order = case_when(
+    geo_level == "metro" ~ 1,
+    geo_level == "region" ~ 2,
+    geo_level == "us" ~ 3,
+    TRUE ~ 99
+  )) %>%
+  arrange(order) %>%
+  select(-order)
+
+# Compute ratios vs region and US (based on the benchmark rows)
+region_vals <- bench_comp %>% filter(geo_level == "region") %>% slice(1)
+us_vals     <- bench_comp %>% filter(geo_level == "us") %>% slice(1)
+
+bench_comp <- bench_comp %>%
+  mutate(
+    jax_vs_region_pop = if_else(geo_level == "metro", population / region_vals$population, NA_real_),
+    jax_vs_us_pop     = if_else(geo_level == "metro", population / us_vals$population, NA_real_),
+    jax_vs_region_rent = if_else(geo_level == "metro", median_gross_rent / region_vals$median_gross_rent, NA_real_),
+    jax_vs_us_rent     = if_else(geo_level == "metro", median_gross_rent / us_vals$median_gross_rent, NA_real_)
+  )
+
+bench_comp
+```
+
+```{r}
+#| label: benchmark-gt
+#| echo: false
+
+bench_comp %>%
+  select(
+    geo_name,
+    population,
+    pop_growth_5yr,
+    units_per_1k_3yr,
+    median_gross_rent,
+    median_home_value,
+    mean_travel_time
+  ) %>%
+  gt(rowname_col = "geo_name") %>%
+  tab_header(title = "Benchmark comparison: Jacksonville vs region vs US (2024)") %>%
+
+  tab_spanner(label = "Demand", columns = c(population, pop_growth_5yr)) %>%
+  tab_spanner(label = "Supply", columns = c(units_per_1k_3yr)) %>%
+  tab_spanner(label = "Housing costs", columns = c(median_gross_rent, median_home_value)) %>%
+  tab_spanner(label = "Mobility", columns = c(mean_travel_time)) %>%
+
+  fmt_number(columns = population, decimals = 0) %>%
+  fmt_percent(columns = pop_growth_5yr, decimals = 1) %>%
+  fmt_number(columns = units_per_1k_3yr, decimals = 1) %>%
+  fmt_currency(columns = c(median_gross_rent, median_home_value), currency = "USD", decimals = 0) %>%
+  fmt_number(columns = mean_travel_time, decimals = 1) %>%
+  fmt(columns = mean_travel_time, fns = function(x) paste0(x, " min")) %>%
+
+  tab_options(
+    table.font.size = 12,
+    data_row.padding = px(4),
+    column_labels.font.weight = "600"
+  )
+```
+
+### Section 2.2 Visual D: Population trend line (metro vs US vs region)
+
+```{r}
+#| label: pop-trend-from-cbsa-features
+#| echo: false
+
+# Assumes cbsa_features has columns:
+# cbsa_code, cbsa_name, year, pop_total, census_division
+
+stopifnot(all(c("cbsa_code","cbsa_name","year","pop_total","census_division") %in% names(cbsa_features)))
+
+target_cbsa_code <- cbsa_code  # "27260"
+
+pop_trend <-  
+  # Build the three geos
+  bind_rows(
+    cbsa_features %>%
+      filter(cbsa_code == target_cbsa_code) %>%
+      transmute(geo = "Jacksonville", year, population = as.numeric(pop_total)),
+
+    cbsa_features %>%
+      filter(census_division == "South Atlantic") %>%
+      group_by(year) %>%
+      summarise(population = sum(as.numeric(pop_total), na.rm = TRUE), .groups = "drop") %>%
+      mutate(geo = "South Atlantic") %>%
+      select(geo, year, population),
+
+    cbsa_features %>%
+      group_by(year) %>%
+      summarise(population = sum(as.numeric(pop_total), na.rm = TRUE), .groups = "drop") %>%
+      mutate(geo = "United States (CBSAs)") %>%
+      select(geo, year, population)
+  ) %>%
+  distinct(geo, year, .keep_all = TRUE) 
+
+# Baseline year: first year common to all three series
+baseline_year <- pop_trend %>%
+  group_by(geo) %>%
+  summarise(min_year = min(year, na.rm = TRUE), .groups = "drop") %>%
+  summarise(baseline = max(min_year)) %>%  # latest of the mins ensures all series have data
+  pull(baseline)
+
+pop_trend_indexed <- pop_trend %>%
+  group_by(geo) %>%
+  arrange(year) %>%
+  mutate(
+    base = population[year == baseline_year][1],
+    pop_index = 100 * population / base
+  ) %>%
+  ungroup()
+
+# Plot (indexed)
+ggplot(pop_trend_indexed, aes(x = year, y = pop_index, color = geo)) +
+  geom_line(linewidth = 1) +
+  theme_minimal() +
+  scale_x_continuous(
+    breaks = pretty_breaks(n = 6),
+    labels = function(x) paste0(x, " 5yr")
+  ) +
+  labs(
+    title = "Population trend (indexed to 100 at baseline)",
+    subtitle = paste0("Baseline year: ", baseline_year, " (ACS 5-year vintages)"),
+    x = NULL,
+    y = "Population index",
+    color = NULL
+  )
+```
+
+### Section 2.2 Visual E (Final): All-metro distribution boxplots with Jacksonville highlighted
+
+```{r}
+#| label: metro-distribution-boxplots
+#| echo: false
+#| fig-height: 6
+#| fig-width: 10
+
+target_year <- 2024
+jax_cbsa <- cbsa_code  # "27260"
+
+# --- Toggle: winsorize extreme tails (only if needed)
+do_winsorize <- FALSE
+winsor_limits <- c(0.01, 0.99)
+
+winsorize_vec <- function(x, probs = c(0.01, 0.99)) {
+  qs <- quantile(x, probs = probs, na.rm = TRUE, names = FALSE)
+  pmin(pmax(x, qs[1]), qs[2])
+}
+
+# 1) Prep wide table for all metros (2024)
+metro_2024 <- cbsa_features %>%
+  filter(year == target_year, cbsa_type == "Metro Area") %>%
+  transmute(
+    cbsa_geoid = cbsa_code,
+    metro_name = cbsa_name,
+    pop_total,
+    pop_growth_5yr,                 # expect fraction (0.12) or percent (12) handled later if needed
+    units_per_1k_3yr = bps_units_per_1k_3yr_avg,
+    land_area_sq_mi,
+    median_gross_rent,
+    median_home_value,
+    mean_travel_time,
+    pct_commute_wfh,
+    commute_intensity_b,
+    pop_density = if_else(land_area_sq_mi > 0, as.numeric(pop_total) / as.numeric(land_area_sq_mi), NA_real_),
+    is_jax = cbsa_code == jax_cbsa
+  )
+
+# 2) Select metrics for distribution plot
+# Note: We'll keep commute_intensity_b optional; include it if you want a 6th facet.
+metrics_long <- metro_2024 %>%
+  select(
+    cbsa_geoid, metro_name, is_jax,
+    pop_growth_5yr,
+    units_per_1k_3yr,
+    pop_density,
+    median_gross_rent,
+    median_home_value
+    # , commute_intensity_b  # <- uncomment to include
+  ) %>%
+  pivot_longer(
+    cols = -c(cbsa_geoid, metro_name, is_jax),
+    names_to = "metric",
+    values_to = "value"
+  ) %>%
+  filter(!is.na(value))
+
+# 3) Fix percent scaling if pop_growth_5yr is stored as 12 instead of 0.12
+# Heuristic: if the median is > 1, assume it's percent units and convert to fraction.
+growth_median <- metrics_long %>% filter(metric == "pop_growth_5yr") %>% summarise(m = median(value, na.rm = TRUE)) %>% pull(m)
+if (!is.na(growth_median) && growth_median > 1) {
+  metrics_long <- metrics_long %>%
+    mutate(value = if_else(metric == "pop_growth_5yr", value / 100, value))
+}
+
+# 4) Optional winsorization per metric
+if (do_winsorize) {
+  metrics_long <- metrics_long %>%
+    group_by(metric) %>%
+    mutate(value_plot = winsorize_vec(value, winsor_limits)) %>%
+    ungroup()
+} else {
+  metrics_long <- metrics_long %>% mutate(value_plot = value)
+}
+
+# 5) Labels + ordering for facets
+metric_labels <- c(
+  pop_growth_5yr     = "Population growth (5y)",
+  units_per_1k_3yr   = "Units per 1k (3y avg)",
+  pop_density        = "Population density (per sq mi)",
+  median_gross_rent  = "Median rent",
+  median_home_value  = "Median home value"
+  # commute_intensity_b = "Commute intensity (B)"  # if included
+)
+
+metric_order <- c(
+  "pop_growth_5yr",
+  "units_per_1k_3yr",
+  "pop_density",
+  "median_gross_rent",
+  "median_home_value"
+  # "commute_intensity_b"
+)
+
+plot_df <- metrics_long %>%
+  mutate(
+    metric = factor(metric, levels = metric_order),
+    metric_label = metric_labels[as.character(metric)]
+  )
+
+jax_points <- plot_df %>% filter(is_jax)
+
+# 6) Plot: boxplot + jitter + Jacksonville point/label
+ggplot(plot_df, aes(x = metric_label, y = value_plot)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(width = 0.10, alpha = 0.12, size = 1) +
+  geom_point(
+    data = jax_points,
+    aes(x = metric_label, y = value_plot),
+    size = 3
+  ) +
+  geom_text(
+    data = jax_points,
+    aes(x = metric_label, y = value_plot, label = "JAX"),
+    vjust = -0.8,
+    size = 3
+  ) +
+  facet_wrap(~ metric_label, scales = "free_y", nrow = 2) +
+  theme_minimal() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    strip.text = element_text(face = "bold"),
+    legend.position = "none"
+  ) +
+  labs(
+    title = "Where Jacksonville sits vs all U.S. metros (2024)",
+    subtitle = "Distributions across all CBSAs (metros only). Jacksonville highlighted.",
+    y = NULL,
+    caption = if (do_winsorize) {
+      "Note: values winsorized at 1st/99th percentiles per metric for readability."
+    } else {
+      "Distribution across all CBSAs. Jacksonville highlighted."
+    }
+  )
+```
+
+Taken together, these charts suggest that Jacksonville has **strong** metro-level tailwinds for retail corridor formation. In the next section, we move from metro context to tract-level screening by applying eligibility gates and ranking tracts based on **growth, housing supply momentum, headroom, and cost pressure** to identify the most promising target zones.
+
+## Section 3: Eligibility & Scoring Model

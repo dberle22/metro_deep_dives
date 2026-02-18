@@ -49,7 +49,7 @@ vars <- c(
   veh_4_plus   = "B08201_006",
   
   # C) Mean travel time to work (minutes) — B08013
-  mean_travel_time = "B08013_001"
+  total_travel_time = "B08013_001"
 )
 
 # Ingest Data ----

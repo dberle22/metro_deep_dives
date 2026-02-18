@@ -29,11 +29,16 @@ JOIN cbsa_counties c
 ORDER BY t.tract_geoid
 )
 
-select tract_geoid,
-	county_geoid,
-	cbsa_code
-from tracts_final
-
+select geo.tract_geoid,
+	geo.tract_name,
+	geo.county_geoid,
+	geo.state_fips,
+	tr.cbsa_code,
+	geo.geom_wkb,
+	geo.geom
+from metro_deep_dive.geo.tracts_fl geo 
+inner join tracts_final tr 
+	on geo.tract_geoid = tr.tract_geoid
 
 -- Tests below
 /*

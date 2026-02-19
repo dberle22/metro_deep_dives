@@ -832,3 +832,7 @@ ggplot(plot_df, aes(x = metric_label, y = value_plot)) +
 Taken together, these charts suggest that Jacksonville has **strong** metro-level tailwinds for retail corridor formation. In the next section, we move from metro context to tract-level screening by applying eligibility gates and ranking tracts based on **growth, housing supply momentum, headroom, and cost pressure** to identify the most promising target zones.
 
 ## Section 3: Eligibility & Scoring Model
+
+This section moves from metro context to tract-level screening. We (1) define the KPIs used in the model, (2) apply eligibility gates that narrow the universe to tracts that match the thesis, and (3) rank eligible tracts with a simple weighted score to identify an initial target set for zone creation.
+
+### 3.1 KPI dictionary

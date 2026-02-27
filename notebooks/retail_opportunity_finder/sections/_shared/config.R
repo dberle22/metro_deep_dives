@@ -80,6 +80,7 @@ REQUIRED_COLUMNS <- list(
 # Geometry assumptions for QA checks
 GEOMETRY_ASSUMPTIONS <- list(
   expected_crs_epsg = 4326,
+  analysis_crs_epsg = 5070,
   min_rows = list(
     cbsa_geom = 1L,
     county_geom = 1L,

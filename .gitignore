@@ -15,3 +15,4 @@ artifacts/
 config/paths.R
 *.html
 .DS_Store
+*.rds

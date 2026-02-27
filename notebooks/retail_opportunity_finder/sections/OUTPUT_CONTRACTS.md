@@ -53,10 +53,46 @@ This file defines expected outputs from each section module so `.qmd` integratio
   - Section 03 schema, logic, and geometry validation report.
 
 ### 04_zones
+- `outputs/section_04_zone_input_candidates.rds`
+  - Eligible tract-level `sf` input dataset validated for zone construction.
+- `outputs/section_04_input_readiness_report.rds`
+  - Input readiness checks for Sprint B dependencies (schema, keys, geometry, set consistency).
+- `outputs/section_04_zone_candidate_tracts.rds`
+  - Eligible tract list used as the candidate universe for zoning.
+- `outputs/section_04_adjacency_edges.rds`
+  - Undirected tract adjacency edge list among zone candidates.
+- `outputs/section_04_zone_components.rds`
+  - Tract-to-component assignments from connected-components analysis.
+- `outputs/section_04_component_summary.rds`
+  - Component-level tract counts and draft zone labels.
 - `outputs/section_04_zones.rds`
   - Zone geometry/object with zone IDs and labels.
+- `outputs/section_04_zone_labels.rds`
+  - Deterministic zone label mapping and ordering metadata.
 - `outputs/section_04_zone_summary.rds`
   - Zone-level KPI summary table.
+- `outputs/section_04_visual_objects.rds`
+  - Render-ready Section 04 visual objects (zone map plot + summary gt table).
+- `outputs/section_04_zone_map.png`
+  - Exported zone map image for quick review.
+- `outputs/section_04_validation_report.rds`
+  - Section 04 schema/key/geometry/assignment validation report.
+- `outputs/section_04_cluster_assignments.rds`
+  - Tract-level assignment table for proximity-based cluster zones.
+- `outputs/section_04_cluster_zones.rds`
+  - Cluster-zone geometries with deterministic labels and geometry attributes.
+- `outputs/section_04_cluster_zone_summary.rds`
+  - Cluster-zone KPI summary metrics.
+- `outputs/section_04_cluster_vs_contiguity_comparison.rds`
+  - Side-by-side summary stats comparing contiguity and cluster zone systems.
+- `outputs/section_04_cluster_params.rds`
+  - Parameter record for cluster generation (eps/min_pts/noise policy).
+- `outputs/section_04_cluster_visual_objects.rds`
+  - Render-ready cluster map and summary table objects.
+- `outputs/section_04_cluster_zone_map.png`
+  - Exported cluster-zone map image.
+- `outputs/section_04_cluster_validation_report.rds`
+  - Cluster-zone schema/key/geometry/assignment validation report.
 
 ### 05_parcels
 - `outputs/section_05_retail_intensity.rds`

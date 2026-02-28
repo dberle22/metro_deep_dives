@@ -12,6 +12,7 @@ This folder is the dedicated workspace for **Sprint F** (notebook integration + 
 - Section modules (`sections/03`-`sections/06`) remain source-of-truth for core computation.
 - Integration layer focuses on composition, presentation, and reproducibility.
 - Any customization that changes core logic should be pushed back into section modules.
+- Notebook runtime policy: integration and `.qmd` render must read prebuilt artifacts (`*.rds` and static files) only; do not execute section build/visual/check scripts during notebook render.
 
 ## Folder structure
 - `tests/`: integration checks (artifact existence, render smoke tests, regression checks)

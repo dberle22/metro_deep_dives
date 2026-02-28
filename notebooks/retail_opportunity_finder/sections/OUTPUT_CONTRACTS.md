@@ -95,13 +95,47 @@ This file defines expected outputs from each section module so `.qmd` integratio
   - Cluster-zone schema/key/geometry/assignment validation report.
 
 ### 05_parcels
+- `outputs/section_05_zones_canonical.rds`
+  - Canonicalized dual-system zone geometry table (`zone_system`, `zone_id`, `zone_label`, `geometry`).
+- `outputs/section_05_parcels_canonical.rds`
+  - Canonical parcel table with normalized parcel attributes and geometry.
+- `outputs/section_05_input_readiness_report.rds`
+  - Input schema/key/geometry readiness report for Section 05 prerequisites.
+- `outputs/section_05_retail_classified_parcels.rds`
+  - Parcel table with retail classification (`retail_flag`, `retail_subtype`) and area fields.
 - `outputs/section_05_retail_intensity.rds`
-  - Tract-level retail intensity metrics.
-- `outputs/section_05_parcel_shortlist.rds`
-  - Final parcel shortlist table/object.
+  - Tract-level retail intensity metrics (`retail_parcel_count`, `retail_area`, `retail_area_density`).
+- `outputs/section_05_retail_intensity_report.rds`
+  - Validation summary for retail classification and tract-assignment workflow.
+- `outputs/section_05_zone_overlay_contiguity.rds`
+  - Contiguity-zone overlay summary with retail context and zone quality fields.
+- `outputs/section_05_zone_overlay_cluster.rds`
+  - Cluster-zone overlay summary with retail context and zone quality fields.
+- `outputs/section_05_parcel_shortlist_contiguity.rds`
+  - Contiguity-system parcel shortlist `sf` output with score components and ranks.
+- `outputs/section_05_parcel_shortlist_cluster.rds`
+  - Cluster-system parcel shortlist `sf` output with score components and ranks.
+- `outputs/section_05_shortlist_report.rds`
+  - Shortlist build validation summary and row-count checks.
+- `outputs/section_05_visual_objects.rds`
+  - Render-ready Section 05 map/table objects for both zone systems.
+- `outputs/section_05_validation_report.rds`
+  - Section 05 schema/key/geometry/logic validation report.
+- `outputs/section_05_overlay_map_contiguity.png`
+  - Exported contiguity overlay map.
+- `outputs/section_05_overlay_map_cluster.png`
+  - Exported cluster overlay map.
+- `outputs/section_05_shortlist_map_contiguity.png`
+  - Exported contiguity shortlist map.
+- `outputs/section_05_shortlist_map_cluster.png`
+  - Exported cluster shortlist map.
 
 ### 06_conclusion_appendix
-- `outputs/section_06_conclusion_points.rds`
-  - Character vector or table of final conclusion bullets.
-- `outputs/section_06_appendix_notes.rds`
-  - Structured appendix notes (definitions, assumptions, caveats, QA summary).
+- `outputs/section_06_conclusion_payload.rds`
+  - Conclusion payload containing highlights and recommended next actions.
+- `outputs/section_06_appendix_payload.rds`
+  - Appendix payload containing KPI dictionary snapshot, assumptions/caveats, and QA rollup.
+- `outputs/section_06_visual_objects.rds`
+  - Render-ready Section 06 summary/QA/assumptions tables.
+- `outputs/section_06_validation_report.rds`
+  - Section 06 schema/reference/narrative validation report.

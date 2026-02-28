@@ -1,0 +1,531 @@
+---
+title: "Retail Opportunity Finder MVP"
+subtitle: "Integration Scaffold (Artifact-Driven)"
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    number-sections: true
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+## Runtime Policy
+
+This notebook runs in artifact mode only. It reads prebuilt `*.rds` outputs and static assets for presentation.
+It does not execute section build, visuals, or checks scripts during render.
+
+```{r}
+#| label: f2-load-artifacts
+#| include: false
+
+suppressPackageStartupMessages({
+  library(dplyr)
+  library(tibble)
+  library(readr)
+  library(ggplot2)
+  library(gt)
+  library(sf)
+})
+
+resolve_project_root <- function() {
+  candidates <- c(".", "..", "../..", "../../..", "../../../..", "../../../../..")
+  for (cand in candidates) {
+    root <- normalizePath(cand, winslash = "/", mustWork = FALSE)
+    marker <- file.path(root, "notebooks/retail_opportunity_finder/sections")
+    if (dir.exists(marker)) return(root)
+  }
+  stop("Unable to resolve project root from current render working directory.", call. = FALSE)
+}
+
+project_root <- resolve_project_root()
+
+resolve_artifact_path <- function(path) {
+  if (file.exists(path)) return(path)
+  rooted <- file.path(project_root, path)
+  if (file.exists(rooted)) return(rooted)
+  path
+}
+
+read_artifact <- function(path, label) {
+  resolved <- resolve_artifact_path(path)
+  if (!file.exists(resolved)) {
+    stop(paste0("Missing required artifact [", label, "]: ", path), call. = FALSE)
+  }
+  readRDS(resolved)
+}
+
+artifact_manifest <- tribble(
+  ~alias, ~path,
+  "section01_run_metadata", "notebooks/retail_opportunity_finder/sections/01_setup/outputs/section_01_run_metadata.rds",
+  "section01_foundation", "notebooks/retail_opportunity_finder/sections/01_setup/outputs/section_01_foundation.rds",
+
+  "section02_visual_objects", "notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_visual_objects.rds",
+  "section02_validation_report", "notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_validation_report.rds",
+
+  "section03_funnel_counts", "notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_funnel_counts.rds",
+  "section03_scored_tracts", "notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_scored_tracts.rds",
+  "section03_top_tracts", "notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_top_tracts.rds",
+  "section03_visual_objects", "notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_visual_objects.rds",
+  "section03_validation_report", "notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_validation_report.rds",
+
+  "section04_zone_summary", "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_zone_summary.rds",
+  "section04_visual_objects", "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_visual_objects.rds",
+  "section04_cluster_zone_summary", "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_cluster_zone_summary.rds",
+  "section04_cluster_visual_objects", "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_cluster_visual_objects.rds",
+  "section04_cluster_vs_contiguity", "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_cluster_vs_contiguity_comparison.rds",
+  "section04_validation_report", "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_validation_report.rds",
+  "section04_cluster_validation_report", "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_cluster_validation_report.rds",
+
+  "section05_zone_overlay_contiguity", "notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_zone_overlay_contiguity.rds",
+  "section05_zone_overlay_cluster", "notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_zone_overlay_cluster.rds",
+  "section05_parcel_shortlist_contiguity", "notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_parcel_shortlist_contiguity.rds",
+  "section05_parcel_shortlist_cluster", "notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_parcel_shortlist_cluster.rds",
+  "section05_visual_objects", "notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_visual_objects.rds",
+  "section05_validation_report", "notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_validation_report.rds",
+
+  "section06_conclusion_payload", "notebooks/retail_opportunity_finder/sections/06_conclusion_appendix/outputs/section_06_conclusion_payload.rds",
+  "section06_appendix_payload", "notebooks/retail_opportunity_finder/sections/06_conclusion_appendix/outputs/section_06_appendix_payload.rds",
+  "section06_visual_objects", "notebooks/retail_opportunity_finder/sections/06_conclusion_appendix/outputs/section_06_visual_objects.rds",
+  "section06_validation_report", "notebooks/retail_opportunity_finder/sections/06_conclusion_appendix/outputs/section_06_validation_report.rds"
+)
+
+artifacts <- lapply(seq_len(nrow(artifact_manifest)), function(i) {
+  read_artifact(artifact_manifest$path[[i]], artifact_manifest$alias[[i]])
+})
+names(artifacts) <- artifact_manifest$alias
+
+# Section-level aliases for clean downstream chunks
+run_meta <- artifacts$section01_run_metadata
+foundation <- artifacts$section01_foundation
+
+s02_visuals <- artifacts$section02_visual_objects
+s03_visuals <- artifacts$section03_visual_objects
+s04_visuals <- artifacts$section04_visual_objects
+s04_cluster_visuals <- artifacts$section04_cluster_visual_objects
+s05_visuals <- artifacts$section05_visual_objects
+s06_visuals <- artifacts$section06_visual_objects
+
+section_02_report <- artifacts$section02_validation_report
+section_03_report <- artifacts$section03_validation_report
+section_04_report <- artifacts$section04_validation_report
+section_04_cluster_report <- artifacts$section04_cluster_validation_report
+section_05_report <- artifacts$section05_validation_report
+section_06_report <- artifacts$section06_validation_report
+
+# Defensive validation guards
+pass_02 <- all(vapply(section_02_report$checks, function(x) isTRUE(x$pass), logical(1))) &&
+  all(unlist(section_02_report$logic_checks))
+pass_03 <- all(vapply(section_03_report$checks[1:5], function(x) isTRUE(x$pass), logical(1))) &&
+  isTRUE(section_03_report$checks$geometry_check$pass) &&
+  all(unlist(section_03_report$logic_checks))
+
+if (!isTRUE(pass_02)) stop("Section 02 validation guard failed.", call. = FALSE)
+if (!isTRUE(pass_03)) stop("Section 03 validation guard failed.", call. = FALSE)
+if (!isTRUE(section_04_report$pass)) stop("Section 04 validation guard failed.", call. = FALSE)
+if (!isTRUE(section_04_cluster_report$pass)) stop("Section 04 cluster validation guard failed.", call. = FALSE)
+if (!isTRUE(section_05_report$pass)) stop("Section 05 validation guard failed.", call. = FALSE)
+if (!isTRUE(section_06_report$pass)) stop("Section 06 validation guard failed.", call. = FALSE)
+
+section_04_warnings <- if (!is.null(section_04_report$warnings)) section_04_report$warnings else character()
+section_05_warnings <- if (!is.null(section_05_report$warnings)) section_05_report$warnings else character()
+section_05_coverage <- section_05_report$coverage_metrics
+
+required_visual_keys <- list(
+  s02_visuals = c("tiles_layout", "peer_gt", "benchmark_gt", "pop_trend_plot", "distribution_plot"),
+  s03_visuals = c("funnel_gt", "price_hist_plot", "growth_hist_plot", "eligible_map_plot", "score_hist_plot", "growth_density_scatter", "top_tracts_gt"),
+  s04_visuals = c("zone_map_plot", "zone_summary_gt"),
+  s04_cluster_visuals = c("cluster_zone_map_plot", "cluster_summary_gt", "comparison_gt"),
+  s05_visuals = c("overlay_map_contiguity", "overlay_map_cluster", "shortlist_map_contiguity", "shortlist_map_cluster", "shortlist_table_contiguity", "shortlist_table_cluster", "system_comparison_gt"),
+  s06_visuals = c("conclusion_summary_table", "shortlist_summary_table", "qa_summary_table", "assumptions_caveats_table", "recommendations_table")
+)
+
+visual_lists <- list(
+  s02_visuals = s02_visuals,
+  s03_visuals = s03_visuals,
+  s04_visuals = s04_visuals,
+  s04_cluster_visuals = s04_cluster_visuals,
+  s05_visuals = s05_visuals,
+  s06_visuals = s06_visuals
+)
+
+for (nm in names(required_visual_keys)) {
+  missing_keys <- setdiff(required_visual_keys[[nm]], names(visual_lists[[nm]]))
+  if (length(missing_keys) > 0) {
+    stop(paste0("Missing visual object keys in ", nm, ": ", paste(missing_keys, collapse = ", ")), call. = FALSE)
+  }
+}
+
+runtime_manifest <- artifact_manifest %>% mutate(exists = TRUE)
+
+integration_outputs_dir <- file.path(project_root, "notebooks/retail_opportunity_finder/integration/outputs")
+if (!dir.exists(integration_outputs_dir)) {
+  dir.create(integration_outputs_dir, recursive = TRUE)
+}
+readr::write_csv(runtime_manifest, file.path(integration_outputs_dir, "phase_f2_runtime_manifest.csv"))
+```
+
+## Scaffold Status
+
+```{r}
+#| label: f2-status
+
+status_tbl <- tibble::tibble(
+  checkpoint = c(
+    "Artifact manifest loaded",
+    "Section validation guards",
+    "Visual object key guards",
+    "Runtime mode"
+  ),
+  status = c("PASS", "PASS", "PASS", "ARTIFACT-ONLY"),
+  detail = c(
+    paste0(nrow(runtime_manifest), " artifacts loaded via readRDS"),
+    "Sections 02-06 validation checks passed",
+    "All required visual object names present",
+    "No section build/visual/check scripts executed in notebook"
+  )
+)
+
+status_tbl %>% gt::gt()
+```
+
+## Section 1 Setup and Method
+
+This MVP notebook identifies retail corridor opportunity in Jacksonville using a funnel workflow:
+funnel screening, tract ranking, zone definition, and parcel shortlist generation.
+
+```{r}
+#| label: s01-run-metadata
+
+run_meta_tbl <- tibble::tibble(
+  field = c("Run timestamp", "R version", "Git hash", "Target CBSA", "Target year"),
+  value = c(
+    run_meta$run_timestamp,
+    run_meta$r_version,
+    run_meta$git_hash,
+    run_meta$target_cbsa,
+    as.character(run_meta$target_year)
+  )
+)
+
+run_meta_tbl %>%
+  gt::gt() %>%
+  gt::tab_header(title = "Run Metadata")
+```
+
+```{r}
+#| label: s01-model-params
+
+model_params_tbl <- tibble::tibble(
+  parameter = c(
+    "Minimum growth gate percentile",
+    "Maximum price proxy percentile",
+    "Maximum density percentile",
+    "Top N tracts for ranking output",
+    "Score weights (growth/units/headroom/price/commute)"
+  ),
+  value = c(
+    as.character(foundation$model_params$min_growth_percentile),
+    as.character(foundation$model_params$price_proxy_pctl_max),
+    as.character(foundation$model_params$max_density_percentile),
+    as.character(foundation$model_params$top_n_tracts),
+    paste(as.character(foundation$model_params$weights), collapse = " / ")
+  )
+)
+
+model_params_tbl %>%
+  gt::gt() %>%
+  gt::tab_header(title = "Model Configuration Snapshot")
+```
+
+```{r}
+#| label: s01-kpi-dictionary
+
+foundation$kpi_dictionary %>%
+  gt::gt() %>%
+  gt::tab_header(title = "KPI Dictionary (V1)")
+```
+
+## Section 2 Market Overview
+
+Jacksonville’s metro profile is presented as a pre-screen before tract-level filtering.
+This section keeps the view concise: snapshot KPIs, peer context, benchmark context, and broad U.S. metro placement.
+Unless otherwise noted, population growth is shown as share/percent, housing cost metrics are in USD, and supply is units per 1,000 residents.
+
+```{r}
+#| label: s02-kpi-tiles
+
+s02_visuals$tiles_layout
+```
+
+```{r}
+#| label: s02-peer-table
+
+s02_visuals$peer_gt
+```
+
+```{r}
+#| label: s02-benchmark-table
+
+s02_visuals$benchmark_gt
+```
+
+```{r}
+#| label: s02-pop-trend
+#| fig-height: 5
+#| fig-width: 10
+#| fig-cap: "Indexed population trend (baseline = 100). Source: Section 02 artifacts derived from `cbsa_features`."
+
+s02_visuals$pop_trend_plot
+```
+
+```{r}
+#| label: s02-distribution
+#| fig-height: 6
+#| fig-width: 11
+#| fig-cap: "Jacksonville position vs all metro distributions by key metrics. Source: Section 02 artifacts."
+
+s02_visuals$distribution_plot
+```
+
+## Section 3 Eligibility and Scoring
+
+The tract screening model narrows the universe through gate logic, then ranks eligible tracts with weighted standardized components.
+Current run funnel: `r artifacts$section03_funnel_counts$tracts_remaining[1]` total tracts to
+`r artifacts$section03_funnel_counts$tracts_remaining[5]` eligible tracts.
+Scoring weights used: growth `0.40`, units `0.25`, headroom `0.20`, price `0.10`, commute `0.05`.
+
+```{r}
+#| label: s03-funnel
+
+s03_visuals$funnel_gt
+```
+
+```{r}
+#| label: s03-price-hist
+#| fig-height: 4
+#| fig-width: 9
+#| fig-cap: "Price proxy percentile distribution with eligibility threshold context. Source: Section 03 artifacts."
+
+s03_visuals$price_hist_plot
+```
+
+```{r}
+#| label: s03-growth-hist
+#| fig-height: 4
+#| fig-width: 9
+#| fig-cap: "5-year tract population growth distribution. Source: Section 03 artifacts."
+
+s03_visuals$growth_hist_plot
+```
+
+```{r}
+#| label: s03-eligible-map
+#| fig-height: 6
+#| fig-width: 9
+#| fig-cap: "Eligible tract map after gate logic. Source: Section 03 artifacts."
+
+s03_visuals$eligible_map_plot
+```
+
+```{r}
+#| label: s03-score-hist
+#| fig-height: 4
+#| fig-width: 9
+#| fig-cap: "Distribution of tract scores among eligible tracts. Source: Section 03 artifacts."
+
+s03_visuals$score_hist_plot
+```
+
+```{r}
+#| label: s03-growth-density
+#| fig-height: 5
+#| fig-width: 9
+#| fig-cap: "Growth vs density diagnostic with high-scoring tracts highlighted. Source: Section 03 artifacts."
+
+s03_visuals$growth_density_scatter
+```
+
+```{r}
+#| label: s03-top-tracts
+
+s03_visuals$top_tracts_gt
+```
+
+## Section 4 Zone Systems
+
+Cluster zones are the primary narrative system for this MVP because they produce a tighter, decision-usable zone count.
+Contiguity outputs are retained for comparison and QA transparency.
+
+Cluster summary for current run:
+- Contiguity zones: `r nrow(artifacts$section04_zone_summary)`
+- Cluster zones: `r nrow(artifacts$section04_cluster_zone_summary)`
+
+```{r}
+#| label: s04-caveat-note
+
+if (length(section_04_warnings) > 0) {
+  caveat_tbl <- tibble::tibble(
+    caveat = section_04_warnings
+  )
+  caveat_tbl %>%
+    gt::gt() %>%
+    gt::tab_header(title = "Section 04 Caveat")
+}
+```
+
+```{r}
+#| label: s04-cluster-map
+#| fig-height: 6
+#| fig-width: 10
+#| fig-cap: "Primary (cluster) zone map for MVP narrative. Source: Section 04 cluster artifacts."
+
+s04_cluster_visuals$cluster_zone_map_plot
+```
+
+```{r}
+#| label: s04-cluster-summary
+
+s04_cluster_visuals$cluster_summary_gt
+```
+
+```{r}
+#| label: s04-system-comparison
+
+s04_cluster_visuals$comparison_gt
+```
+
+### Contiguity Comparison (Secondary)
+
+```{r}
+#| label: s04-contiguity-map
+#| fig-height: 6
+#| fig-width: 10
+#| fig-cap: "Secondary contiguity zone map for method comparison. Source: Section 04 artifacts."
+
+s04_visuals$zone_map_plot
+```
+
+```{r}
+#| label: s04-contiguity-summary
+
+s04_visuals$zone_summary_gt
+```
+
+## Section 5 Retail Overlay and Shortlist
+
+Section 05 connects zone-level opportunity to parcel-level screening outputs.
+The shortlist score combines zone quality, local retail context, and parcel characteristics.
+
+Current run snapshot:
+- Cluster shortlist candidates: `r nrow(artifacts$section05_parcel_shortlist_cluster)`
+- Covered cluster zones: `r dplyr::n_distinct(artifacts$section05_parcel_shortlist_cluster$zone_id)`
+- Parcel-to-zone assignment rate (cluster): `r scales::percent(section_05_coverage$parcel_to_zone_assignment_rate_cluster, accuracy = 0.1)`
+- Parcel-to-zone assignment rate (contiguity): `r scales::percent(section_05_coverage$parcel_to_zone_assignment_rate_contiguity, accuracy = 0.1)`
+
+```{r}
+#| label: s05-caveat-note
+
+if (length(section_05_warnings) > 0) {
+  tibble::tibble(
+    caveat = section_05_warnings
+  ) %>%
+    gt::gt() %>%
+    gt::tab_header(title = "Section 05 Caveats")
+}
+```
+
+```{r}
+#| label: s05-overlay-cluster-map
+#| fig-height: 6
+#| fig-width: 10
+#| fig-cap: "Cluster-zone retail overlay context map. Source: Section 05 visual artifacts."
+
+s05_visuals$overlay_map_cluster
+```
+
+```{r}
+#| label: s05-shortlist-cluster-map
+#| fig-height: 6
+#| fig-width: 10
+#| fig-cap: "Cluster-system parcel shortlist map. Source: Section 05 visual artifacts."
+
+s05_visuals$shortlist_map_cluster
+```
+
+```{r}
+#| label: s05-shortlist-cluster-table
+
+s05_visuals$shortlist_table_cluster
+```
+
+### Contiguity Comparison (Secondary)
+
+```{r}
+#| label: s05-overlay-contiguity-map
+#| fig-height: 6
+#| fig-width: 10
+#| fig-cap: "Contiguity-zone retail overlay context map. Source: Section 05 visual artifacts."
+
+s05_visuals$overlay_map_contiguity
+```
+
+```{r}
+#| label: s05-shortlist-contiguity-map
+#| fig-height: 6
+#| fig-width: 10
+#| fig-cap: "Contiguity-system parcel shortlist map. Source: Section 05 visual artifacts."
+
+s05_visuals$shortlist_map_contiguity
+```
+
+```{r}
+#| label: s05-shortlist-contiguity-table
+
+s05_visuals$shortlist_table_contiguity
+```
+
+```{r}
+#| label: s05-system-comparison
+
+s05_visuals$system_comparison_gt
+```
+
+## Section 6 Conclusion and Appendix
+
+This section consolidates top zone highlights, shortlist summary statistics, recommended actions, and QA caveats.
+Appendix tables below are the authoritative location for assumptions, caveats, and section-level QA status in this MVP.
+
+```{r}
+#| label: s06-zone-highlights
+
+s06_visuals$conclusion_summary_table
+```
+
+```{r}
+#| label: s06-shortlist-summary
+
+s06_visuals$shortlist_summary_table
+```
+
+```{r}
+#| label: s06-recommendations
+
+s06_visuals$recommendations_table
+```
+
+### Appendix
+
+```{r}
+#| label: s06-qa-summary
+
+s06_visuals$qa_summary_table
+```
+
+```{r}
+#| label: s06-assumptions
+
+s06_visuals$assumptions_caveats_table
+```

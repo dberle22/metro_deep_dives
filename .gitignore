@@ -16,3 +16,7 @@ config/paths.R
 *.html
 .DS_Store
 *.rds
+*.csv
+*.xlsx
+*.duckdb
+*_files/

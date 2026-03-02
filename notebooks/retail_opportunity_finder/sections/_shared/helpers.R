@@ -144,7 +144,7 @@ run_metadata <- function() {
 }
 
 validate_model_params <- function(model_params) {
-  required_weights <- c("growth", "units", "headroom", "price", "commute")
+  required_weights <- c("growth", "units", "headroom", "price", "commute", "income")
   has_weights <- all(required_weights %in% names(model_params$weights))
   weight_sum <- sum(model_params$weights[required_weights])
 

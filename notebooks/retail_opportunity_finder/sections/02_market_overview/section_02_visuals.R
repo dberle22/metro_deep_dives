@@ -11,6 +11,62 @@ peer_table <- readRDS("notebooks/retail_opportunity_finder/sections/02_market_ov
 benchmark_table <- readRDS("notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_benchmark_table.rds")
 pop_trend_indexed <- readRDS("notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_pop_trend_indexed.rds")
 distribution_long <- readRDS("notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_distribution_long.rds")
+market_tract_sf <- readRDS("notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_market_tract_sf.rds")
+market_county_sf <- readRDS("notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_market_county_sf.rds")
+
+context_dir <- "notebooks/retail_opportunity_finder/sections/02_market_overview/context_layers/outputs"
+read_optional_sf <- function(path) {
+  if (!file.exists(path)) return(NULL)
+  obj <- readRDS(path)
+  if (!inherits(obj, "sf")) return(NULL)
+  if (nrow(obj) == 0) return(NULL)
+  obj
+}
+
+context_cbsa_sf <- read_optional_sf(file.path(context_dir, "section_02_context_cbsa_boundary_sf.rds"))
+context_county_sf <- read_optional_sf(file.path(context_dir, "section_02_context_county_sf.rds"))
+context_places_sf <- read_optional_sf(file.path(context_dir, "section_02_context_places_sf.rds"))
+context_roads_sf <- read_optional_sf(file.path(context_dir, "section_02_context_major_roads_sf.rds"))
+context_water_sf <- read_optional_sf(file.path(context_dir, "section_02_context_water_sf.rds"))
+
+align_crs <- function(x, target) {
+  if (is.null(x)) return(NULL)
+  if (is.na(sf::st_crs(x))) return(x)
+  if (sf::st_crs(x) != sf::st_crs(target)) sf::st_transform(x, sf::st_crs(target)) else x
+}
+
+context_cbsa_sf <- align_crs(context_cbsa_sf, market_tract_sf)
+context_county_sf <- align_crs(context_county_sf, market_tract_sf)
+context_places_sf <- align_crs(context_places_sf, market_tract_sf)
+context_roads_sf <- align_crs(context_roads_sf, market_tract_sf)
+context_water_sf <- align_crs(context_water_sf, market_tract_sf)
+market_county_sf <- align_crs(market_county_sf, market_tract_sf)
+
+base_county_sf <- market_county_sf
+if (!is.null(context_places_sf)) {
+  context_places_sf <- suppressWarnings(sf::st_make_valid(context_places_sf)) %>%
+    suppressWarnings(sf::st_filter(sf::st_union(base_county_sf), .predicate = sf::st_intersects))
+}
+if (!is.null(context_roads_sf)) {
+  context_roads_sf <- suppressWarnings(sf::st_make_valid(context_roads_sf)) %>%
+    suppressWarnings(sf::st_filter(sf::st_union(base_county_sf), .predicate = sf::st_intersects))
+}
+if (!is.null(context_water_sf)) {
+  context_water_sf <- suppressWarnings(sf::st_make_valid(context_water_sf)) %>%
+    suppressWarnings(sf::st_filter(sf::st_union(base_county_sf), .predicate = sf::st_intersects))
+}
+
+roads_plot_sf <- NULL
+if (!is.null(context_roads_sf) && "MTFCC" %in% names(context_roads_sf)) {
+  roads_plot_sf <- context_roads_sf %>%
+    mutate(
+      road_class = dplyr::case_when(
+        MTFCC == "S1100" ~ "Primary highways",
+        MTFCC == "S1200" ~ "Secondary highways",
+        TRUE ~ "Other roads"
+      )
+    )
+}
 
 kpi_tile <- function(label, value, subtitle = NULL) {
   bslib::card(
@@ -25,7 +81,7 @@ kpi_tile <- function(label, value, subtitle = NULL) {
 
 tiles_ui <- list(
   kpi_tile("Population (2024)", kpi_tiles$population_fmt),
-  kpi_tile("Pop growth (5y)", kpi_tiles$pop_growth_5yr_fmt, "2019→2024 (ACS 5-year)"),
+  kpi_tile("Pop growth (5y)", kpi_tiles$pop_growth_5yr_fmt, "2019-2024 (ACS 5-year)"),
   kpi_tile("Units per 1k (3y avg)", kpi_tiles$units_per_1k_3yr_fmt, "BPS rolling avg"),
   kpi_tile("Median rent", kpi_tiles$median_rent_fmt),
   kpi_tile("Median home value", kpi_tiles$median_home_value_fmt),
@@ -79,8 +135,8 @@ benchmark_gt <- benchmark_table %>%
   gt::fmt_percent(columns = pop_growth_5yr, decimals = 1) %>%
   gt::fmt_number(columns = units_per_1k_3yr, decimals = 1) %>%
   gt::fmt_currency(columns = c(median_gross_rent, median_home_value), currency = "USD", decimals = 0) %>%
-  gt::fmt_number(columns = mean_travel_time, decimals = 1) %>%
-  gt::fmt(columns = mean_travel_time, fns = function(x) paste0(x, " min")) %>%
+  gt::fmt_number(columns = mean_travel_time, decimals = 2) %>%
+  gt::fmt(columns = mean_travel_time, fns = function(x) paste0(formatC(x, format = "f", digits = 2), " min")) %>%
   gt::tab_options(table.font.size = 12, data_row.padding = gt::px(4), column_labels.font.weight = "600")
 
 baseline_year <- pop_trend_indexed %>%
@@ -102,34 +158,212 @@ pop_trend_plot <- ggplot(pop_trend_indexed, aes(x = year, y = pop_index, color =
     color = NULL
   )
 
-jax_points <- distribution_long %>% filter(is_jax)
+jax_points <- distribution_long %>% filter(is_jax) %>% mutate(metric_x = "All metros")
+distribution_long <- distribution_long %>% mutate(metric_x = "All metros")
 
-distribution_plot <- ggplot(distribution_long, aes(x = metric_label, y = value_plot)) +
-  geom_boxplot(outlier.shape = NA) +
-  geom_jitter(width = 0.10, alpha = 0.12, size = 1) +
-  geom_point(data = jax_points, aes(x = metric_label, y = value_plot), size = 3) +
-  geom_text(data = jax_points, aes(x = metric_label, y = value_plot, label = "JAX"), vjust = -0.8, size = 3) +
+distribution_plot <- ggplot(distribution_long, aes(x = metric_x, y = value_plot)) +
+  geom_jitter(width = 0.15, alpha = 0.10, size = 0.8, color = "#94A3B8") +
+  geom_boxplot(width = 0.25, outlier.shape = NA, fill = "#E2E8F0", color = "#475569", linewidth = 0.4) +
+  geom_point(data = jax_points, aes(x = metric_x, y = value_plot), size = 2.8, color = "#B42318") +
+  geom_label(
+    data = jax_points,
+    aes(x = metric_x, y = value_plot, label = "Jacksonville"),
+    nudge_x = 0.12,
+    size = 2.8,
+    label.size = 0.1,
+    color = "#7A271A",
+    fill = "white",
+    alpha = 0.9
+  ) +
   facet_wrap(~ metric_label, scales = "free_y", nrow = 2) +
   theme_minimal() +
   theme(
-    axis.title.x = element_blank(),
+    axis.title = element_blank(),
     axis.text.x = element_blank(),
     axis.ticks.x = element_blank(),
-    strip.text = element_text(face = "bold"),
+    strip.text = element_text(face = "bold", size = 11),
+    panel.grid.minor = element_blank(),
     legend.position = "none"
   ) +
   labs(
     title = "Where Jacksonville sits vs all U.S. metros (2024)",
-    subtitle = "Distributions across all CBSAs (metros only). Jacksonville highlighted.",
-    y = NULL,
-    caption = "Distribution across all CBSAs. Jacksonville highlighted."
+    subtitle = "Each panel shows all U.S. metro values with Jacksonville highlighted.",
+    caption = "Source: section_02_distribution_long.rds"
   )
+
+market_context_map_plot_style_a <- ggplot(market_tract_sf) +
+  geom_sf(aes(fill = pop_growth_3yr), color = "white", linewidth = 0.05) +
+  {
+    if (!is.null(context_water_sf)) {
+      geom_sf(data = context_water_sf, fill = "#BFDBFE", color = "#60A5FA", linewidth = 0.25, alpha = 0.45)
+    }
+  } +
+  {
+    if (!is.null(context_places_sf)) {
+      geom_sf(data = context_places_sf, fill = NA, color = "#475467", linewidth = 0.25, alpha = 0.75, linetype = "dotted")
+    }
+  } +
+  {
+    if (!is.null(roads_plot_sf)) {
+      geom_sf(data = roads_plot_sf, aes(color = road_class, linetype = road_class, linewidth = road_class), alpha = 0.95)
+    } else if (!is.null(context_roads_sf)) {
+      geom_sf(data = context_roads_sf, color = "#B54708", linewidth = 0.45, alpha = 0.90)
+    }
+  } +
+  geom_sf(
+    data = base_county_sf,
+    fill = NA,
+    color = "#0F172A",
+    linewidth = 0.70,
+    alpha = 0.95
+  ) +
+  {
+    if (!is.null(context_cbsa_sf)) {
+      geom_sf(data = context_cbsa_sf, fill = NA, color = "#111827", linewidth = 1.0, alpha = 1)
+    }
+  } +
+  scale_fill_viridis_c(
+    option = "C",
+    direction = 1,
+    labels = scales::percent_format(accuracy = 1),
+    na.value = "#D1D5DB",
+    name = "Pop growth\n(3y)"
+  ) +
+  {
+    if (!is.null(roads_plot_sf)) {
+      list(
+        scale_color_manual(
+          values = c(
+            "Primary highways" = "#991B1B",
+            "Secondary highways" = "#1D4ED8",
+            "Other roads" = "#9CA3AF"
+          ),
+          name = "Road network"
+        ),
+        scale_linetype_manual(
+          values = c(
+            "Primary highways" = "solid",
+            "Secondary highways" = "dashed",
+            "Other roads" = "dotted"
+          ),
+          name = "Road network"
+        ),
+        scale_linewidth_manual(
+          values = c(
+            "Primary highways" = 0.70,
+            "Secondary highways" = 0.45,
+            "Other roads" = 0.25
+          ),
+          guide = "none"
+        )
+      )
+    } else {
+      NULL
+    }
+  } +
+  coord_sf(expand = FALSE) +
+  theme_void() +
+  theme(
+    panel.background = element_rect(fill = "#F8FAFC", color = NA),
+    plot.background = element_rect(fill = "#F8FAFC", color = NA),
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(color = "#475467"),
+    legend.position = "right"
+  ) +
+  labs(
+    title = "Jacksonville market context at tract level",
+    subtitle = "Road style test A: color + linetype + linewidth",
+    caption = "Sources: Section 02 tract/county artifacts + TIGER roads/water/places context layers"
+  )
+
+market_context_map_plot_style_b <- ggplot(market_tract_sf) +
+  geom_sf(aes(fill = pop_growth_3yr), color = "white", linewidth = 0.05) +
+  {
+    if (!is.null(context_water_sf)) {
+      geom_sf(data = context_water_sf, fill = "#BFDBFE", color = "#60A5FA", linewidth = 0.25, alpha = 0.45)
+    }
+  } +
+  {
+    if (!is.null(context_places_sf)) {
+      geom_sf(data = context_places_sf, fill = NA, color = "#475467", linewidth = 0.25, alpha = 0.75, linetype = "dotted")
+    }
+  } +
+  {
+    if (!is.null(roads_plot_sf)) {
+      geom_sf(data = roads_plot_sf, aes(color = road_class, linewidth = road_class), alpha = 0.95)
+    } else if (!is.null(context_roads_sf)) {
+      geom_sf(data = context_roads_sf, color = "#B54708", linewidth = 0.45, alpha = 0.90)
+    }
+  } +
+  geom_sf(
+    data = base_county_sf,
+    fill = NA,
+    color = "#0F172A",
+    linewidth = 0.70,
+    alpha = 0.95
+  ) +
+  {
+    if (!is.null(context_cbsa_sf)) {
+      geom_sf(data = context_cbsa_sf, fill = NA, color = "#111827", linewidth = 1.0, alpha = 1)
+    }
+  } +
+  scale_fill_viridis_c(
+    option = "C",
+    direction = 1,
+    labels = scales::percent_format(accuracy = 1),
+    na.value = "#D1D5DB",
+    name = "Pop growth\n(3y)"
+  ) +
+  {
+    if (!is.null(roads_plot_sf)) {
+      list(
+        scale_color_manual(
+          values = c(
+            "Primary highways" = "#991B1B",
+            "Secondary highways" = "#0F766E",
+            "Other roads" = "#9CA3AF"
+          ),
+          name = "Road network"
+        ),
+        scale_linewidth_manual(
+          values = c(
+            "Primary highways" = 0.70,
+            "Secondary highways" = 0.50,
+            "Other roads" = 0.25
+          ),
+          guide = "none"
+        )
+      )
+    } else {
+      NULL
+    }
+  } +
+  coord_sf(expand = FALSE) +
+  theme_void() +
+  theme(
+    panel.background = element_rect(fill = "#F8FAFC", color = NA),
+    plot.background = element_rect(fill = "#F8FAFC", color = NA),
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(color = "#475467"),
+    legend.position = "right"
+  ) +
+  labs(
+    title = "Jacksonville market context at tract level",
+    subtitle = "Road style test B: high-contrast colors",
+    caption = "Sources: Section 02 tract/county artifacts + TIGER roads/water/places context layers"
+  )
+
+# Temporary default while road-style decision is in progress.
+market_context_map_plot <- market_context_map_plot_style_b
 
 save_artifact(
   list(
     tiles_layout = tiles_layout,
     peer_gt = peer_gt,
     benchmark_gt = benchmark_gt,
+    market_context_map_plot_style_a = market_context_map_plot_style_a,
+    market_context_map_plot_style_b = market_context_map_plot_style_b,
+    market_context_map_plot = market_context_map_plot,
     pop_trend_plot = pop_trend_plot,
     distribution_plot = distribution_plot
   ),
@@ -145,10 +379,32 @@ ggplot2::ggsave(
 )
 
 ggplot2::ggsave(
+  filename = "notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_market_context_map.png",
+  plot = market_context_map_plot,
+  width = 8,
+  height = 7,
+  dpi = 150
+)
+ggplot2::ggsave(
+  filename = "notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_market_context_map_style_a.png",
+  plot = market_context_map_plot_style_a,
+  width = 8,
+  height = 7,
+  dpi = 150
+)
+ggplot2::ggsave(
+  filename = "notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_market_context_map_style_b.png",
+  plot = market_context_map_plot_style_b,
+  width = 8,
+  height = 7,
+  dpi = 150
+)
+
+ggplot2::ggsave(
   filename = "notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_distribution_plot.png",
   plot = distribution_plot,
-  width = 10,
-  height = 6,
+  width = 14,
+  height = 4.5,
   dpi = 150
 )
 

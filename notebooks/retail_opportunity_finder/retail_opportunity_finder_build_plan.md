@@ -180,26 +180,122 @@
 **Deliverable:** Section 03 module is independently buildable/testable with complete tract-level scoring outputs.
 
 ## Sprint C: Section 4 module (zones)
-- [ ] Build and test contiguity + dissolve workflow
-- [ ] Produce zone summaries and maps
-- [ ] Persist `zones` artifacts for parcel overlay module
+- [x] Build and test contiguity + dissolve workflow
+- [x] Produce zone summaries and maps
+- [x] Persist `zones` artifacts for parcel overlay module
 
 **Deliverable:** Section 4 outputs validated and reusable.
 
+## Section 4 checkpoint (completed)
+- [x] Implemented Section 04 build steps 1-5:
+  - input readiness checks
+  - eligible tract candidate universe
+  - adjacency + connected components
+  - dissolved zone geometries + deterministic labels
+  - zone summary metrics
+- [x] Implemented Section 04 visuals:
+  - zone map (`section_04_zone_map.png`)
+  - render-ready visual objects (`section_04_visual_objects.rds`)
+- [x] Implemented and passed Section 04 validation checks:
+  - `section_04_validation_report.rds`
+  - hard checks pass (`pass=TRUE`)
+  - warning captured: zone count `16` outside target band `[3, 8]`
+
+**Deliverable:** Section 04 module is independently buildable/testable and ready for Sprint D dependencies.
+
 ## Sprint D: Section 5 module (parcels + shortlist)
-- [ ] Build and test retail intensity + overlay logic
-- [ ] Build shortlist table and maps
-- [ ] Persist parcel shortlist artifacts
+- [x] Build and test retail intensity + overlay logic
+- [x] Build shortlist table and maps
+- [x] Persist parcel shortlist artifacts
 
 **Deliverable:** Section 5 outputs validated and reusable.
 
-## Sprint E: Section 6 module + `.qmd` integration
-- [ ] Finalize conclusion/appendix module content
-- [ ] Integrate selected outputs from Section modules into `.qmd`
-- [ ] Run full render and resolve integration issues
+## Section 5 checkpoint (completed)
+- [x] Implemented Section 05 build steps D1-D3:
+  - input readiness + canonicalization
+  - retail classification + tract retail intensity
+  - dual-system zone overlays + parcel shortlist scoring
+- [x] Implemented Section 05 visual outputs (D4):
+  - zone overlay maps (contiguity + cluster)
+  - shortlist maps (contiguity + cluster)
+  - top parcel tables + system comparison objects
+- [x] Implemented and passed Section 05 validation checks (D5):
+  - `section_05_validation_report.rds`
+  - hard checks pass (`pass=TRUE`)
+  - warnings captured for follow-up (zone assignment rate warning band + invalid shortlist geometries)
+- [x] Added shared agent workflow reference:
+  - `notebooks/retail_opportunity_finder/sections/_shared/AGENT_INSTRUCTIONS.md`
+
+**Deliverable:** Section 05 module is independently buildable/testable and integration-ready.
+
+## Sprint E: Section 6 module (conclusion + appendix)
+- Overview doc: `notebooks/retail_opportunity_finder/sections/06_conclusion_appendix/sprint_overview.md`
+- [x] Finalize conclusion/appendix module content
+- [x] Build Section 06 artifacts (`build`, `visuals`, `checks`)
+- [x] Validate appendix assumptions/QA references against Sections 03-05 outputs
+
+**Deliverable:** Section 06 module is independently buildable/testable and ready for integration.
+
+## Section 6 checkpoint (completed)
+- [x] Implemented Section 06 build artifacts:
+  - `section_06_conclusion_payload.rds`
+  - `section_06_appendix_payload.rds`
+- [x] Implemented Section 06 visual outputs:
+  - `section_06_visual_objects.rds`
+  - conclusion summary + shortlist summary + QA/assumptions tables
+- [x] Implemented and passed Section 06 validation checks:
+  - `section_06_validation_report.rds`
+  - hard checks pass (`pass=TRUE`)
+
+**Deliverable:** Section 06 outputs are finalized and Sprint F integration-ready.
+
+## Sprint F: Notebook integration + render hardening
+- Overview doc: `notebooks/retail_opportunity_finder/sprint_f_integration_overview.md`
+- [ ] Integrate selected outputs from Sections 03-06 into `.qmd`
+- [ ] Run full render and resolve integration/runtime issues
 - [ ] Final formatting consistency pass (labels, units, captions, source notes)
+- [ ] Publish integration validation log
 
 **Deliverable:** complete V1 notebook from funnel to shortlist using modular section pipeline.
+
+## Sprint F proposal (integration sprint)
+
+### Goal
+Complete notebook integration as a dedicated sprint with render stability and presentation quality as the primary acceptance criteria.
+
+### Scope
+1. Integrate validated artifacts from Sections 03-06 into `retail_opportunity_finder_dash_v1.qmd`.
+2. Keep heavy computation in section scripts and keep `.qmd` as reporting layer.
+3. Run full render/fix loop until notebook completes end-to-end without manual intervention.
+
+### Execution plan
+1. Preflight and contracts
+- [ ] Confirm all required artifacts exist from Sections 03-05.
+- [ ] Confirm schema compatibility for `.qmd` consumption objects.
+- [ ] Lock plot/table object names referenced by `.qmd`.
+2. Section 03 integration pass
+- [ ] Wire funnel, diagnostics, and top tract outputs from Section 03 artifacts.
+- [ ] Validate figure/table rendering and narrative references.
+3. Section 04 integration pass
+- [ ] Wire zone map + summary outputs from Section 04 artifacts.
+- [ ] Ensure label/units consistency with Section 03.
+4. Section 05 integration pass
+- [ ] Wire cluster-default parcel overlay and shortlist outputs.
+- [ ] Add compact contiguity-vs-cluster comparison display.
+5. Section 06 integration pass
+- [ ] Wire conclusion and appendix artifacts from Section 06 outputs.
+- [ ] Validate appendix references and caveat consistency.
+6. Full render and polish
+- [ ] Run full notebook render.
+- [ ] Resolve all integration/runtime errors.
+- [ ] Run final formatting consistency pass across titles, captions, units, and source notes.
+
+### Acceptance gates
+- [ ] Full `.qmd` render completes without manual edits or reruns.
+- [ ] All required visuals/tables appear with correct labels and ordering.
+- [ ] Cluster system is default in Section 05 narrative; contiguity remains available in comparison outputs.
+- [ ] Appendix includes explicit assumptions and QA caveats from Sections 03-05.
+- [ ] Integration validation log is saved (render status + known warnings).
 
 ## 4) Recommended implementation notes
 - Reuse `scripts/utils.R` for package loading and shared function sourcing so section modules match existing project runtime.
@@ -221,3 +317,30 @@
   - Zone map + zone summary
   - Parcel shortlist map + table
   - Conclusion + appendix with assumptions/QA
+
+## 6) Future improvements backlog
+
+### Section 05 geometry quality hardening
+- Add optional geometry repair mode (`st_make_valid`) before shortlist publish.
+- Add post-repair invalid geometry audit with county-level diagnostics.
+- Decide whether invalid shortlist geometries should become hard-fail in validation.
+
+### Section 05 assignment coverage improvements
+- Evaluate boundary sensitivity mode (buffer-based parcel-to-zone assignment).
+- Compare strict in-zone vs buffered assignment impact on shortlist stability.
+- Tune warning/error thresholds for zone assignment rates with baseline evidence.
+
+### Scoring and model calibration
+- Add sensitivity analysis for Section 05 score weights and rank overlap.
+- Benchmark alternative local retail context features (nearest-neighbor density, distance-weighted intensity).
+- Add calibration notebook chunk to compare shortlist outputs across weight sets.
+
+### Integration and ops
+- Add automated “build + checks + visuals + render” runner script for CI/local.
+- Persist a consolidated run manifest with artifact checksums and validation statuses.
+- Add lightweight regression checks to detect large output shifts between runs.
+
+### UX/reporting improvements
+- Add optional zone micro deep-dive pages in Section 05.
+- Add county and zone drill-down tables with export-ready CSV companions.
+- Add source/caveat footers directly under each major Section 05 visual.

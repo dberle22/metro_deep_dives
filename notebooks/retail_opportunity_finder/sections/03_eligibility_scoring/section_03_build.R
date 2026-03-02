@@ -17,6 +17,7 @@ assert_required_columns(tract_features, REQUIRED_COLUMNS$tract_features, "tract_
 weights <- MODEL_PARAMS$weights
 target_cbsa <- TARGET_CBSA
 top_n <- MODEL_PARAMS$top_n_tracts
+cluster_top_share <- MODEL_PARAMS$cluster_top_share
 
 funnel_counts <- dplyr::tibble(
   step = c(
@@ -39,11 +40,12 @@ funnel_counts <- dplyr::tibble(
 eligible_tracts <- tract_features %>%
   filter(eligible_v1 == 1) %>%
   mutate(
-    growth_raw = pop_growth_5yr,
+    growth_raw = pop_growth_3yr,
     units_raw = units_per_1k_3yr,
     headroom_raw = -pop_density,
     price_raw = -price_proxy_pctl,
-    commute_raw = commute_intensity_b
+    commute_raw = commute_intensity_b,
+    income_raw = median_hh_income
   )
 
 impute_with_median <- function(x) {
@@ -51,20 +53,30 @@ impute_with_median <- function(x) {
   dplyr::if_else(is.na(x), med, x)
 }
 
-scored_tracts <- eligible_tracts %>%
+scored_tracts <- tract_features %>%
+  mutate(
+    growth_raw = pop_growth_3yr,
+    units_raw = units_per_1k_3yr,
+    headroom_raw = -pop_density,
+    price_raw = -price_proxy_pctl,
+    commute_raw = commute_intensity_b,
+    income_raw = median_hh_income
+  ) %>%
   mutate(
     growth_scoring = impute_with_median(growth_raw),
     units_scoring = impute_with_median(units_raw),
     headroom_scoring = impute_with_median(headroom_raw),
     price_scoring = impute_with_median(price_raw),
-    commute_scoring = impute_with_median(commute_raw)
+    commute_scoring = impute_with_median(commute_raw),
+    income_scoring = impute_with_median(income_raw)
   ) %>%
   mutate(
     z_growth = zscore(growth_scoring),
     z_units = zscore(units_scoring),
     z_headroom = zscore(headroom_scoring),
     z_price = zscore(price_scoring),
-    z_commute = zscore(commute_scoring)
+    z_commute = zscore(commute_scoring),
+    z_income = zscore(income_scoring)
   ) %>%
   mutate(
     contrib_growth = weights[["growth"]] * z_growth,
@@ -72,7 +84,8 @@ scored_tracts <- eligible_tracts %>%
     contrib_headroom = weights[["headroom"]] * z_headroom,
     contrib_price = weights[["price"]] * z_price,
     contrib_commute = weights[["commute"]] * z_commute,
-    tract_score = contrib_growth + contrib_units + contrib_headroom + contrib_price + contrib_commute
+    contrib_income = weights[["income"]] * z_income,
+    tract_score = contrib_growth + contrib_units + contrib_headroom + contrib_price + contrib_commute + contrib_income
   ) %>%
   arrange(desc(tract_score)) %>%
   mutate(
@@ -80,17 +93,19 @@ scored_tracts <- eligible_tracts %>%
   )
 
 make_why_tags <- function(df) {
-  growth_cut <- stats::quantile(df$pop_growth_5yr, 0.75, na.rm = TRUE)
+  growth_cut <- stats::quantile(df$pop_growth_3yr, 0.75, na.rm = TRUE)
   units_cut <- stats::quantile(df$units_per_1k_3yr, 0.75, na.rm = TRUE)
   commute_cut <- stats::quantile(df$commute_intensity_b, 0.75, na.rm = TRUE)
+  income_cut <- stats::quantile(df$median_hh_income, 0.75, na.rm = TRUE)
 
   df %>%
     mutate(
-      why_growth = pop_growth_5yr >= growth_cut,
+      why_growth = pop_growth_3yr >= growth_cut,
       why_units = units_per_1k_3yr >= units_cut,
       why_headroom = density_pctl <= MODEL_PARAMS$max_density_percentile,
       why_price = price_proxy_pctl <= 0.50,
-      why_commute = commute_intensity_b >= commute_cut
+      why_commute = commute_intensity_b >= commute_cut,
+      why_income = median_hh_income >= income_cut
     ) %>%
     rowwise() %>%
     mutate(
@@ -100,7 +115,8 @@ make_why_tags <- function(df) {
           if (isTRUE(why_units)) "High housing pipeline" else NA_character_,
           if (isTRUE(why_headroom)) "Low density headroom" else NA_character_,
           if (isTRUE(why_price)) "Moderate price pressure" else NA_character_,
-          if (isTRUE(why_commute)) "High commute exposure" else NA_character_
+          if (isTRUE(why_commute)) "High commute exposure" else NA_character_,
+          if (isTRUE(why_income)) "Strong household income" else NA_character_
         ) %>% stats::na.omit(),
         collapse = " | "
       )
@@ -111,22 +127,47 @@ make_why_tags <- function(df) {
 
 scored_tracts <- make_why_tags(scored_tracts)
 
+cluster_cutoff_n <- ceiling(nrow(scored_tracts) * cluster_top_share)
+cluster_seed_tracts <- scored_tracts %>%
+  arrange(desc(tract_score)) %>%
+  mutate(
+    cluster_seed_rank = row_number(),
+    is_cluster_seed = cluster_seed_rank <= cluster_cutoff_n,
+    cluster_top_share = cluster_top_share,
+    cluster_cutoff_n = cluster_cutoff_n
+  ) %>%
+  filter(is_cluster_seed) %>%
+  select(
+    tract_geoid,
+    tract_score,
+    tract_rank,
+    cluster_seed_rank,
+    cluster_top_share,
+    cluster_cutoff_n,
+    eligible_v1
+  )
+
 top_tracts <- scored_tracts %>%
+  filter(eligible_v1 == 1) %>%
+  arrange(desc(tract_score)) %>%
+  mutate(tract_rank = row_number()) %>%
   slice_head(n = top_n) %>%
   select(
     tract_rank,
     tract_geoid,
     tract_score,
-    pop_growth_5yr,
+    pop_growth_3yr,
     units_per_1k_3yr,
     pop_density,
     price_proxy_pctl,
     commute_intensity_b,
+    median_hh_income,
     contrib_growth,
     contrib_units,
     contrib_headroom,
     contrib_price,
     contrib_commute,
+    contrib_income,
     why_tags
   )
 
@@ -140,16 +181,19 @@ tract_component_score_table <- tract_features %>%
         headroom_raw,
         price_raw,
         commute_raw,
+        income_raw,
         z_growth,
         z_units,
         z_headroom,
         z_price,
         z_commute,
+        z_income,
         contrib_growth,
         contrib_units,
         contrib_headroom,
         contrib_price,
         contrib_commute,
+        contrib_income,
         tract_score,
         tract_rank,
         why_tags
@@ -171,26 +215,31 @@ tract_component_score_table <- tract_features %>%
     gate_pop,
     gate_price,
     gate_density,
+    pop_growth_3yr,
     pop_growth_5yr,
     units_per_1k_3yr,
     pop_density,
     price_proxy_pctl,
     commute_intensity_b,
+    median_hh_income,
     growth_raw,
     units_raw,
     headroom_raw,
     price_raw,
     commute_raw,
+    income_raw,
     z_growth,
     z_units,
     z_headroom,
     z_price,
     z_commute,
+    z_income,
     contrib_growth,
     contrib_units,
     contrib_headroom,
     contrib_price,
     contrib_commute,
+    contrib_income,
     tract_score,
     tract_rank,
     why_tags,
@@ -202,8 +251,8 @@ price_hist_input <- tract_features %>%
   filter(!is.na(price_proxy_pctl))
 
 growth_hist_input <- tract_features %>%
-  select(tract_geoid, pop_growth_5yr, eligible_v1) %>%
-  filter(!is.na(pop_growth_5yr))
+  select(tract_geoid, pop_growth_3yr, eligible_v1) %>%
+  filter(!is.na(pop_growth_3yr))
 
 tract_wkb <- DBI::dbGetQuery(con, glue::glue("
   WITH cbsa_counties AS (
@@ -257,6 +306,10 @@ save_artifact(
 save_artifact(
   top_tracts,
   "notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_top_tracts.rds"
+)
+save_artifact(
+  cluster_seed_tracts,
+  "notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_cluster_seed_tracts.rds"
 )
 save_artifact(
   tract_component_score_table,

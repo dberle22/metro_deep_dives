@@ -3,19 +3,22 @@ title: "Retail Opportunity Finder MVP"
 subtitle: "Integration Scaffold (Artifact-Driven)"
 format:
   html:
+    page-layout: full
     toc: true
-    toc-depth: 2
+    toc-location: left
+    toc-title: "Contents"
+    toc-expand: true
+    toc-depth: 3
     number-sections: true
+    grid:
+      sidebar-width: 260px
+      body-width: 1200px
+      margin-width: 260px
 execute:
   echo: false
   warning: false
   message: false
 ---
-
-## Runtime Policy
-
-This notebook runs in artifact mode only. It reads prebuilt `*.rds` outputs and static assets for presentation.
-It does not execute section build, visuals, or checks scripts during render.
 
 ```{r}
 #| label: f2-load-artifacts
@@ -28,6 +31,8 @@ suppressPackageStartupMessages({
   library(ggplot2)
   library(gt)
   library(sf)
+  library(DT)
+  library(htmltools)
 })
 
 resolve_project_root <- function() {
@@ -71,17 +76,11 @@ artifact_manifest <- tribble(
   "section03_visual_objects", "notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_visual_objects.rds",
   "section03_validation_report", "notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_validation_report.rds",
 
-  "section04_zone_summary", "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_zone_summary.rds",
-  "section04_visual_objects", "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_visual_objects.rds",
   "section04_cluster_zone_summary", "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_cluster_zone_summary.rds",
   "section04_cluster_visual_objects", "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_cluster_visual_objects.rds",
-  "section04_cluster_vs_contiguity", "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_cluster_vs_contiguity_comparison.rds",
-  "section04_validation_report", "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_validation_report.rds",
   "section04_cluster_validation_report", "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_cluster_validation_report.rds",
 
-  "section05_zone_overlay_contiguity", "notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_zone_overlay_contiguity.rds",
   "section05_zone_overlay_cluster", "notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_zone_overlay_cluster.rds",
-  "section05_parcel_shortlist_contiguity", "notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_parcel_shortlist_contiguity.rds",
   "section05_parcel_shortlist_cluster", "notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_parcel_shortlist_cluster.rds",
   "section05_visual_objects", "notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_visual_objects.rds",
   "section05_validation_report", "notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_validation_report.rds",
@@ -103,14 +102,12 @@ foundation <- artifacts$section01_foundation
 
 s02_visuals <- artifacts$section02_visual_objects
 s03_visuals <- artifacts$section03_visual_objects
-s04_visuals <- artifacts$section04_visual_objects
 s04_cluster_visuals <- artifacts$section04_cluster_visual_objects
 s05_visuals <- artifacts$section05_visual_objects
 s06_visuals <- artifacts$section06_visual_objects
 
 section_02_report <- artifacts$section02_validation_report
 section_03_report <- artifacts$section03_validation_report
-section_04_report <- artifacts$section04_validation_report
 section_04_cluster_report <- artifacts$section04_cluster_validation_report
 section_05_report <- artifacts$section05_validation_report
 section_06_report <- artifacts$section06_validation_report
@@ -124,28 +121,25 @@ pass_03 <- all(vapply(section_03_report$checks[1:5], function(x) isTRUE(x$pass),
 
 if (!isTRUE(pass_02)) stop("Section 02 validation guard failed.", call. = FALSE)
 if (!isTRUE(pass_03)) stop("Section 03 validation guard failed.", call. = FALSE)
-if (!isTRUE(section_04_report$pass)) stop("Section 04 validation guard failed.", call. = FALSE)
 if (!isTRUE(section_04_cluster_report$pass)) stop("Section 04 cluster validation guard failed.", call. = FALSE)
 if (!isTRUE(section_05_report$pass)) stop("Section 05 validation guard failed.", call. = FALSE)
 if (!isTRUE(section_06_report$pass)) stop("Section 06 validation guard failed.", call. = FALSE)
 
-section_04_warnings <- if (!is.null(section_04_report$warnings)) section_04_report$warnings else character()
+section_04_warnings <- if (!is.null(section_04_cluster_report$warnings)) section_04_cluster_report$warnings else character()
 section_05_warnings <- if (!is.null(section_05_report$warnings)) section_05_report$warnings else character()
 section_05_coverage <- section_05_report$coverage_metrics
 
 required_visual_keys <- list(
   s02_visuals = c("tiles_layout", "peer_gt", "benchmark_gt", "pop_trend_plot", "distribution_plot"),
-  s03_visuals = c("funnel_gt", "price_hist_plot", "growth_hist_plot", "eligible_map_plot", "score_hist_plot", "growth_density_scatter", "top_tracts_gt"),
-  s04_visuals = c("zone_map_plot", "zone_summary_gt"),
-  s04_cluster_visuals = c("cluster_zone_map_plot", "cluster_summary_gt", "comparison_gt"),
-  s05_visuals = c("overlay_map_contiguity", "overlay_map_cluster", "shortlist_map_contiguity", "shortlist_map_cluster", "shortlist_table_contiguity", "shortlist_table_cluster", "system_comparison_gt"),
+  s03_visuals = c("eligible_map_plot", "score_hist_plot", "component_mix_plot", "top_tracts_gt"),
+  s04_cluster_visuals = c("cluster_zone_map_plot", "cluster_summary_gt"),
+  s05_visuals = c("market_parcel_context_map", "cluster_parcel_overlay_map", "overlay_map_cluster", "shortlist_map_cluster", "shortlist_table_cluster"),
   s06_visuals = c("conclusion_summary_table", "shortlist_summary_table", "qa_summary_table", "assumptions_caveats_table", "recommendations_table")
 )
 
 visual_lists <- list(
   s02_visuals = s02_visuals,
   s03_visuals = s03_visuals,
-  s04_visuals = s04_visuals,
   s04_cluster_visuals = s04_cluster_visuals,
   s05_visuals = s05_visuals,
   s06_visuals = s06_visuals
@@ -167,10 +161,9 @@ if (!dir.exists(integration_outputs_dir)) {
 readr::write_csv(runtime_manifest, file.path(integration_outputs_dir, "phase_f2_runtime_manifest.csv"))
 ```
 
-## Scaffold Status
-
 ```{r}
 #| label: f2-status
+#| include: false
 
 status_tbl <- tibble::tibble(
   checkpoint = c(
@@ -191,10 +184,58 @@ status_tbl <- tibble::tibble(
 status_tbl %>% gt::gt()
 ```
 
-## Section 1 Setup and Method
+# Setup and Method
 
-This MVP notebook identifies retail corridor opportunity in Jacksonville using a funnel workflow:
-funnel screening, tract ranking, zone definition, and parcel shortlist generation.
+This report helps us find where retail corridor opportunity is most promising in the Jacksonville market.
+We move from broad market context to tract-level screening, then prioritize areas for deeper site review.
+
+```{r}
+#| label: s01-scaffold-status-hidden
+#| include: false
+
+status_tbl %>% gt::gt()
+```
+
+The output is practical:
+
+- A shortlist of high-opportunity geographies
+- A clear explanation of why those places rank higher
+- A repeatable framework we can apply in other metros
+
+## How to Read This Notebook
+
+Think of the process in three steps:
+
+1. **Market context:**
+We start with a quick check of Jacksonville's growth, housing pressure, and peer position.
+2. **Tract screening and ranking:**
+We evaluate tracts using a consistent scorecard to identify where demand momentum and development headroom are strongest.
+3. **Action-oriented prioritization:**
+We carry top-performing areas into zone and parcel analysis to support field diligence and underwriting.
+
+## Key Assumptions (Business View)
+
+This model is designed for screening, not final investment decisions.
+It is meant to narrow the market to better starting points for human review.
+
+Important assumptions:
+
+- We compare tracts within the same metro for fairness.
+- We prioritize growth and housing pipeline signals.
+- We treat pricing pressure as a guardrail, not the only decision factor.
+- Final decisions still require local market diligence (tenants, zoning, access, competition).
+
+<details>
+<summary><strong>Method Transparency (for technical readers)</strong></summary>
+
+- Data sources include ACS, BPS, tract geometry, and parcel attributes from validated section artifacts.
+- Metrics are standardized within the target metro to support apples-to-apples tract comparison.
+- The score combines weighted components aligned to the strategy thesis: growth, housing pipeline, development headroom, price pressure, and commute context.
+- Gates are applied to enforce strategy fit and reduce false positives.
+- Validation reports are generated by section and surfaced in the appendix.
+- This is a screening model. Site-level diligence and underwriting are still required.
+
+</details>
 
 ```{r}
 #| label: s01-run-metadata
@@ -217,19 +258,28 @@ run_meta_tbl %>%
 
 ```{r}
 #| label: s01-model-params
+#| include: false
+
+cluster_top_share_display <- if (!is.null(foundation$model_params$cluster_top_share)) {
+  scales::percent(foundation$model_params$cluster_top_share, accuracy = 1)
+} else {
+  "25%"
+}
 
 model_params_tbl <- tibble::tibble(
   parameter = c(
     "Minimum growth gate percentile",
     "Maximum price proxy percentile",
     "Maximum density percentile",
+    "Cluster cutoff (top share of scored tracts)",
     "Top N tracts for ranking output",
-    "Score weights (growth/units/headroom/price/commute)"
+    "Score weights (growth/units/headroom/price/commute/income)"
   ),
   value = c(
     as.character(foundation$model_params$min_growth_percentile),
     as.character(foundation$model_params$price_proxy_pctl_max),
     as.character(foundation$model_params$max_density_percentile),
+    cluster_top_share_display,
     as.character(foundation$model_params$top_n_tracts),
     paste(as.character(foundation$model_params$weights), collapse = " / ")
   )
@@ -248,11 +298,32 @@ foundation$kpi_dictionary %>%
   gt::tab_header(title = "KPI Dictionary (V1)")
 ```
 
-## Section 2 Market Overview
+# Market Overview
 
-Jacksonville’s metro profile is presented as a pre-screen before tract-level filtering.
-This section keeps the view concise: snapshot KPIs, peer context, benchmark context, and broad U.S. metro placement.
+Before drilling into tracts, we confirm whether Jacksonville has the type of market conditions where retail corridor expansion is plausible.
+
+What we look for:
+
+- Population growth momentum
+- Housing supply pipeline
+- Relative affordability pressure
+- Position versus peers and broader benchmarks
+
+What this means:
+
+- If metro-level setup is weak, tract-level targeting is less reliable.
+- If metro-level signals are constructive, tract-level analysis becomes more actionable.
+
 Unless otherwise noted, population growth is shown as share/percent, housing cost metrics are in USD, and supply is units per 1,000 residents.
+
+```{r}
+#| label: s02-market-context-map
+#| fig-height: 6
+#| fig-width: 9
+#| fig-cap: "Market context map with tract growth signal and contextual boundaries/transport layers when available."
+
+s02_visuals$market_context_map_plot
+```
 
 ```{r}
 #| label: s02-kpi-tiles
@@ -290,78 +361,104 @@ s02_visuals$pop_trend_plot
 s02_visuals$distribution_plot
 ```
 
-## Section 3 Eligibility and Scoring
+# Section 3 Eligibility and Scoring
 
-The tract screening model narrows the universe through gate logic, then ranks eligible tracts with weighted standardized components.
-Current run funnel: `r artifacts$section03_funnel_counts$tracts_remaining[1]` total tracts to
-`r artifacts$section03_funnel_counts$tracts_remaining[5]` eligible tracts.
-Scoring weights used: growth `0.40`, units `0.25`, headroom `0.20`, price `0.10`, commute `0.05`.
+This section ranks every tract first, then applies strategy gates so we can focus on the strongest candidates.
 
-```{r}
-#| label: s03-funnel
+**What we do:**
 
-s03_visuals$funnel_gt
-```
+- Build one tract score across all tracts using growth, supply, headroom, price pressure, commute exposure, and income.
+- Use the top `25%` of scored tracts as the clustering cutoff universe.
+- Keep gates as secondary diagnostics for strategy-fit storytelling.
+- Surface the top tracts with plain-language why tags.
 
-```{r}
-#| label: s03-price-hist
-#| fig-height: 4
-#| fig-width: 9
-#| fig-cap: "Price proxy percentile distribution with eligibility threshold context. Source: Section 03 artifacts."
+**What this means:**
 
-s03_visuals$price_hist_plot
-```
+- Higher-ranked tracts are stronger candidates for zone and parcel follow-up.
+- Lower-ranked tracts are deprioritized, not permanently excluded from future review.
+- The model provides a transparent starting point, not a final verdict.
 
 ```{r}
-#| label: s03-growth-hist
-#| fig-height: 4
-#| fig-width: 9
-#| fig-cap: "5-year tract population growth distribution. Source: Section 03 artifacts."
+#| label: s03-scorecard
 
-s03_visuals$growth_hist_plot
+scorecard_tbl <- tibble::tibble(
+  variable = c(
+    "Population growth (3y)",
+    "Units per 1k (3y avg)",
+    "Population density",
+    "Price proxy percentile",
+    "Commute intensity",
+    "Median household income"
+  ),
+  weight = c(
+    foundation$model_params$weights["growth"],
+    foundation$model_params$weights["units"],
+    foundation$model_params$weights["headroom"],
+    foundation$model_params$weights["price"],
+    foundation$model_params$weights["commute"],
+    foundation$model_params$weights["income"]
+  ),
+  effect = c("Positive", "Positive", "Negative", "Negative", "Positive", "Positive")
+) %>%
+  mutate(weight_pct = scales::percent(weight, accuracy = 1)) %>%
+  select(variable, weight_pct, effect) %>%
+  gt::gt() %>%
+  gt::tab_header(title = "Scoring Variables, Weights, and Direction") %>%
+  gt::cols_label(
+    variable = "Variable",
+    weight_pct = "Weight",
+    effect = "Effect on score"
+  )
+
+scorecard_tbl
 ```
+
+Clustering cutoff uses the top `25%` of tracts by `tract_score`, where each component is standardized within the metro.
 
 ```{r}
 #| label: s03-eligible-map
 #| fig-height: 6
 #| fig-width: 9
-#| fig-cap: "Eligible tract map after gate logic. Source: Section 03 artifacts."
+#| fig-cap: "Tracts shaded by composite score across the full metro footprint, with county/context overlays. Source: Section 03 + Section 02 context artifacts."
 
 s03_visuals$eligible_map_plot
 ```
 
 ```{r}
-#| label: s03-score-hist
-#| fig-height: 4
-#| fig-width: 9
-#| fig-cap: "Distribution of tract scores among eligible tracts. Source: Section 03 artifacts."
-
-s03_visuals$score_hist_plot
-```
-
-```{r}
-#| label: s03-growth-density
+#| label: s03-component-mix
 #| fig-height: 5
 #| fig-width: 9
-#| fig-cap: "Growth vs density diagnostic with high-scoring tracts highlighted. Source: Section 03 artifacts."
+#| fig-cap: "Average contribution to score among top shortlisted tracts (eligible)."
 
-s03_visuals$growth_density_scatter
+s03_visuals$component_mix_plot
 ```
+
+Method note: This chart averages each `contrib_*` component across top shortlisted tracts. Positive values increase score; negative values indicate that component sits below metro baseline even for top-ranked tracts.
 
 ```{r}
 #| label: s03-top-tracts
 
-s03_visuals$top_tracts_gt
+htmltools::div(
+  style = "max-height: 520px; overflow-y: auto; border: 1px solid #d9d9d9; border-radius: 4px; padding: 8px;",
+  s03_visuals$top_tracts_gt
+)
 ```
 
-## Section 4 Zone Systems
+# Zone Systems
 
-Cluster zones are the primary narrative system for this MVP because they produce a tighter, decision-usable zone count.
-Contiguity outputs are retained for comparison and QA transparency.
+This section turns the Section 3 top-scoring tract set into operating zones for field review and corridor prioritization.
+
+How zones are built:
+
+1. Start from the top `25%` of tracts by Section 3 tract score (cluster seed universe).
+2. Project tract centroids and connect nearby tracts using a fixed distance threshold.
+3. Form connected components, then assign small/noise groups to the nearest core cluster.
+4. Dissolve tract groups into cluster zone polygons and compute zone summary metrics.
 
 Cluster summary for current run:
-- Contiguity zones: `r nrow(artifacts$section04_zone_summary)`
+
 - Cluster zones: `r nrow(artifacts$section04_cluster_zone_summary)`
+- Cluster seed tracts: `r nrow(readRDS(resolve_artifact_path("notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_zone_input_candidates.rds")))`
 
 ```{r}
 #| label: s04-caveat-note
@@ -380,7 +477,7 @@ if (length(section_04_warnings) > 0) {
 #| label: s04-cluster-map
 #| fig-height: 6
 #| fig-width: 10
-#| fig-cap: "Primary (cluster) zone map for MVP narrative. Source: Section 04 cluster artifacts."
+#| fig-cap: "Cluster zone map generated from top-scoring tract seeds. Source: Section 04 cluster artifacts."
 
 s04_cluster_visuals$cluster_zone_map_plot
 ```
@@ -391,39 +488,32 @@ s04_cluster_visuals$cluster_zone_map_plot
 s04_cluster_visuals$cluster_summary_gt
 ```
 
-```{r}
-#| label: s04-system-comparison
+Operational read:
 
-s04_cluster_visuals$comparison_gt
-```
+- Tighter clusters improve leasing and field-routing focus.
+- Zone summaries provide a direct bridge into parcel-level overlay in Section 5.
 
-### Contiguity Comparison (Secondary)
+# Retail Overlay and Shortlist
 
-```{r}
-#| label: s04-contiguity-map
-#| fig-height: 6
-#| fig-width: 10
-#| fig-cap: "Secondary contiguity zone map for method comparison. Source: Section 04 artifacts."
+Section 05 translates high-opportunity zones into a practical parcel shortlist for broker and field review.
 
-s04_visuals$zone_map_plot
-```
+How the shortlist score works:
+- `Zone quality` (50%): stronger cluster zones score higher based on upstream tract performance.
+- `Local retail context` (25%): parcels in tracts with stronger existing retail intensity score higher.
+- `Parcel characteristics` (25%): favors larger parcels, lower value-per-square-foot, and more recent sales activity.
 
-```{r}
-#| label: s04-contiguity-summary
-
-s04_visuals$zone_summary_gt
-```
-
-## Section 5 Retail Overlay and Shortlist
-
-Section 05 connects zone-level opportunity to parcel-level screening outputs.
-The shortlist score combines zone quality, local retail context, and parcel characteristics.
+Value and sales logic:
+- `JV (Just Value)` is the primary value signal.
+- We compute value intensity as `JV / land square feet` and winsorize extremes for stability.
+- `SALE_PRC1` is retained for sales context and recency (via `last_sale_date`), not as the primary value field.
 
 Current run snapshot:
+
 - Cluster shortlist candidates: `r nrow(artifacts$section05_parcel_shortlist_cluster)`
 - Covered cluster zones: `r dplyr::n_distinct(artifacts$section05_parcel_shortlist_cluster$zone_id)`
 - Parcel-to-zone assignment rate (cluster): `r scales::percent(section_05_coverage$parcel_to_zone_assignment_rate_cluster, accuracy = 0.1)`
-- Parcel-to-zone assignment rate (contiguity): `r scales::percent(section_05_coverage$parcel_to_zone_assignment_rate_contiguity, accuracy = 0.1)`
+
+Assignment-rate definition: share of retail-flagged parcels that are successfully assigned into a cluster zone within the current market scope.
 
 ```{r}
 #| label: s05-caveat-note
@@ -438,12 +528,21 @@ if (length(section_05_warnings) > 0) {
 ```
 
 ```{r}
-#| label: s05-overlay-cluster-map
+#| label: s05-market-context-map
 #| fig-height: 6
 #| fig-width: 10
-#| fig-cap: "Cluster-zone retail overlay context map. Source: Section 05 visual artifacts."
+#| fig-cap: "Market parcel context map showing residential/other and retail parcels before zone filtering. Source: Section 05 + Section 02 context artifacts."
 
-s05_visuals$overlay_map_cluster
+s05_visuals$market_parcel_context_map
+```
+
+```{r}
+#| label: s05-cluster-context-map
+#| fig-height: 6
+#| fig-width: 10
+#| fig-cap: "Cluster zones over parcel context. Source: Section 04 clusters + Section 05 + Section 02 context artifacts."
+
+s05_visuals$cluster_parcel_overlay_map
 ```
 
 ```{r}
@@ -458,42 +557,51 @@ s05_visuals$shortlist_map_cluster
 ```{r}
 #| label: s05-shortlist-cluster-table
 
-s05_visuals$shortlist_table_cluster
+datatable_df <- s05_visuals$shortlist_table_cluster %>%
+  mutate(
+    across(c(parcel_area_sqmi, assessed_value_psf, zone_quality_score, local_retail_context_score, parcel_characteristics_score, shortlist_score), ~ round(.x, 3))
+  )
+
+DT::datatable(
+  datatable_df,
+  filter = "top",
+  rownames = FALSE,
+  options = list(
+    pageLength = 15,
+    lengthMenu = c(10, 15, 25, 50, 100),
+    scrollX = TRUE,
+    autoWidth = TRUE
+  ),
+  colnames = c(
+    "Cluster zone",
+    "Rank in zone",
+    "Parcel ID",
+    "Owner",
+    "Owner address",
+    "Site address",
+    "Use code",
+    "Use code description",
+    "Use code group",
+    "Subtype",
+    "Area (sq mi)",
+    "Just value",
+    "Value / sqft",
+    "Recent sale date",
+    "Recent sale price",
+    "Zone quality",
+    "Local context",
+    "Parcel score",
+    "Final score"
+  )
+) %>%
+  DT::formatCurrency(c("just_value_clean", "last_sale_price"), currency = "$", digits = 0) %>%
+  DT::formatRound(
+    columns = c("parcel_area_sqmi", "assessed_value_psf", "zone_quality_score", "local_retail_context_score", "parcel_characteristics_score", "shortlist_score"),
+    digits = 3
+  )
 ```
 
-### Contiguity Comparison (Secondary)
-
-```{r}
-#| label: s05-overlay-contiguity-map
-#| fig-height: 6
-#| fig-width: 10
-#| fig-cap: "Contiguity-zone retail overlay context map. Source: Section 05 visual artifacts."
-
-s05_visuals$overlay_map_contiguity
-```
-
-```{r}
-#| label: s05-shortlist-contiguity-map
-#| fig-height: 6
-#| fig-width: 10
-#| fig-cap: "Contiguity-system parcel shortlist map. Source: Section 05 visual artifacts."
-
-s05_visuals$shortlist_map_contiguity
-```
-
-```{r}
-#| label: s05-shortlist-contiguity-table
-
-s05_visuals$shortlist_table_contiguity
-```
-
-```{r}
-#| label: s05-system-comparison
-
-s05_visuals$system_comparison_gt
-```
-
-## Section 6 Conclusion and Appendix
+# Conclusion and Appendix
 
 This section consolidates top zone highlights, shortlist summary statistics, recommended actions, and QA caveats.
 Appendix tables below are the authoritative location for assumptions, caveats, and section-level QA status in this MVP.
@@ -516,7 +624,47 @@ s06_visuals$shortlist_summary_table
 s06_visuals$recommendations_table
 ```
 
-### Appendix
+## Future Deep Dives
+
+Near-term:
+
+- Retail density diagnostics by corridor and by cluster.
+- Sensitivity tests on shortlist weights and hybrid quota parameters.
+- Parcel-assignment boundary sensitivity (strict in-zone vs buffered assignment).
+
+Long-term:
+
+- Corridor-first clustering seeded from observed retail corridors.
+- Alternate parcel marketability signals beyond value-per-sqft.
+- Scenario comparisons for different operator formats and target tenant mixes.
+
+## Appendix
+
+Runtime policy:
+
+- This notebook runs in artifact mode only.
+- It reads prebuilt `*.rds` outputs and static assets for presentation.
+- It does not execute section build, visuals, or checks scripts during render.
+
+Section 3 diagnostics:
+
+```{r}
+#| label: s03-score-hist-appendix
+#| fig-height: 4
+#| fig-width: 9
+#| fig-cap: "Distribution of tract scores across all tracts (diagnostic). Source: Section 03 artifacts."
+
+s03_visuals$score_hist_plot
+```
+
+```{r}
+#| label: s05-zone-quality-appendix
+#| fig-height: 6
+#| fig-width: 10
+#| fig-cap: "Cluster zone quality map (mean tract score percentile). Source: Section 05 visual artifacts."
+
+s05_visuals$overlay_map_cluster
+```
 
 ```{r}
 #| label: s06-qa-summary

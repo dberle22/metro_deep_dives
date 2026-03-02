@@ -75,6 +75,16 @@ pop AS (
   WHERE geo_level = 'tract'
   and year = 2024
 ),
+income as (
+   SELECT
+    geo_id AS tract_geoid,
+    year,
+    CAST(median_hh_income AS DOUBLE) AS median_hh_income,
+    CAST(per_capita_income AS DOUBLE) AS per_capita_income,
+    CAST(pov_rate AS DOUBLE) as pov_rate
+  FROM metro_deep_dive.silver.income_kpi
+  WHERE geo_level = 'tract'
+),
 housing AS (
   SELECT
     geo_id AS tract_geoid,
@@ -114,6 +124,11 @@ base AS (
     p.pop_growth_3yr,
     p.pop_growth_5yr,
 
+    -- income
+    i.median_hh_income,
+    i.per_capita_income,
+    i.pov_rate,
+    
     -- housing
     h.median_gross_rent,
     h.median_home_value,
@@ -145,15 +160,19 @@ base AS (
 
   LEFT JOIN housing h
     ON t.tract_geoid = h.tract_geoid
-   AND h.year = p.year
+   AND p.year = h.year
+   
+   LEFT JOIN income i
+    ON t.tract_geoid = i.tract_geoid
+   AND p.year = i.year
 
   LEFT JOIN transport tr
     ON t.tract_geoid = tr.tract_geoid
-   AND tr.year = p.year
+   AND p.year = tr.year
 
   LEFT JOIN bps_3yr b
     ON t.county_geoid = b.county_geoid
-   AND b.year = p.year
+   AND p.year = b.year
    
   LEFT JOIN geom g 
   	ON t.tract_geoid = g.tract_geoid
@@ -167,6 +186,13 @@ pop_pctl AS (
     PERCENT_RANK() OVER (ORDER BY pop_growth_3yr) AS pop_growth_pctl
   FROM base
   WHERE pop_growth_3yr IS NOT NULL
+),
+income_pctl AS (
+  SELECT
+    tract_geoid,
+    PERCENT_RANK() OVER (ORDER BY median_hh_income) AS income_pctl
+  FROM base
+  WHERE median_gross_rent IS NOT NULL
 ),
 rent_pctl AS (
   SELECT
@@ -194,14 +220,17 @@ pctl AS (
   SELECT
     b.*,
     pp.pop_growth_pctl,
+    ip.income_pctl,
     rp.rent_pctl,
     vp.value_pctl,
     dp.density_pctl
   FROM base b
   LEFT JOIN pop_pctl pp  USING (tract_geoid)
+  LEFT JOIN income_pctl ip USING (tract_geoid)
   LEFT JOIN rent_pctl rp USING (tract_geoid)
   LEFT JOIN value_pctl vp USING (tract_geoid)
   LEFT JOIN density_pctl dp USING (tract_geoid)
+  
 ),
 
 tract_features as (
@@ -215,6 +244,11 @@ SELECT
   pop_growth_3yr,
   pop_growth_pctl,
   pop_growth_5yr,
+  
+  median_hh_income,
+  per_capita_income,
+  pov_rate,
+  income_pctl,
 
   median_gross_rent,
   median_home_value,

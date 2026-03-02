@@ -11,13 +11,15 @@ MODEL_PARAMS <- list(
   min_growth_percentile = 0.50,
   price_proxy_pctl_max = 0.70,
   max_density_percentile = 0.70,
+  cluster_top_share = 0.25,
   top_n_tracts = 50,
   weights = c(
-    growth = 0.40,
-    units = 0.25,
-    headroom = 0.20,
+    growth = 0.30,
+    units = 0.20,
+    headroom = 0.15,
     price = 0.10,
-    commute = 0.05
+    commute = 0.05,
+    income = 0.20
   )
 )
 
@@ -31,21 +33,24 @@ ENABLE_MICRO_DEEP_DIVE <- FALSE
 # KPI dictionary for model transparency and QA
 KPI_DICTIONARY <- data.frame(
   kpi_key = c(
-    "pop_growth_5yr",
+    "pop_growth_3yr",
     "units_per_1k_3yr",
     "pop_density",
     "price_proxy_pctl",
-    "commute_intensity_b"
+    "commute_intensity_b",
+    "median_hh_income"
   ),
   label = c(
-    "Population growth (5-year)",
+    "Population growth (3-year)",
     "Estimated units per 1,000 residents (3-year avg)",
     "Population density",
     "Housing price pressure proxy percentile",
-    "Commute intensity"
+    "Commute intensity",
+    "Median household income"
   ),
-  direction = c("higher_better", "higher_better", "lower_better", "lower_better", "higher_better"),
+  direction = c("higher_better", "higher_better", "lower_better", "lower_better", "higher_better", "higher_better"),
   source_table = c(
+    "tract_features",
     "tract_features",
     "tract_features",
     "tract_features",
@@ -59,9 +64,10 @@ KPI_DICTIONARY <- data.frame(
 REQUIRED_COLUMNS <- list(
   tract_features = c(
     "cbsa_code", "county_geoid", "tract_geoid", "year",
-    "pop_total", "pop_growth_5yr", "pop_growth_pctl",
+    "pop_total", "pop_growth_3yr", "pop_growth_5yr", "pop_growth_pctl",
     "median_gross_rent", "median_home_value", "price_proxy_pctl",
     "mean_travel_time", "pct_commute_wfh", "commute_intensity_b",
+    "median_hh_income",
     "total_units_3yr_avg", "units_per_1k_3yr",
     "land_area_sqmi", "pop_density", "density_pctl",
     "gate_pop", "gate_price", "gate_density", "eligible_v1"

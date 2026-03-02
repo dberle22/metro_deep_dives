@@ -20,3 +20,7 @@ config/paths.R
 *.xlsx
 *.duckdb
 *_files/
+notebooks/retail_opportunity_finder/sections/02_market_overview/context_layers/cache/
+!notebooks/retail_opportunity_finder/integration/qmd/retail_opportunity_finder_mvp.html
+!notebooks/retail_opportunity_finder/integration/qmd/retail_opportunity_finder_mvp_files/
+!notebooks/retail_opportunity_finder/integration/qmd/retail_opportunity_finder_mvp_files/**

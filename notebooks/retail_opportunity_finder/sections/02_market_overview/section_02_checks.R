@@ -11,6 +11,8 @@ peer_table <- readRDS("notebooks/retail_opportunity_finder/sections/02_market_ov
 benchmark_table <- readRDS("notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_benchmark_table.rds")
 pop_trend_indexed <- readRDS("notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_pop_trend_indexed.rds")
 distribution_long <- readRDS("notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_distribution_long.rds")
+market_tract_sf <- readRDS("notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_market_tract_sf.rds")
+market_county_sf <- readRDS("notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_market_county_sf.rds")
 
 kpi_check <- validate_columns(
   kpi_tiles,
@@ -56,6 +58,30 @@ distribution_check <- validate_columns(
   "section_02_distribution_long"
 )
 
+market_tract_check <- validate_columns(
+  market_tract_sf,
+  c("tract_geoid", "cbsa_code", "county_geoid", "pop_growth_3yr", "pop_growth_5yr", "geometry"),
+  "section_02_market_tract_sf"
+)
+
+market_tract_geom_check <- validate_sf(
+  market_tract_sf,
+  "section_02_market_tract_sf",
+  GEOMETRY_ASSUMPTIONS$expected_crs_epsg
+)
+
+market_county_check <- validate_columns(
+  market_county_sf,
+  c("county_geoid", "county_name", "geometry"),
+  "section_02_market_county_sf"
+)
+
+market_county_geom_check <- validate_sf(
+  market_county_sf,
+  "section_02_market_county_sf",
+  GEOMETRY_ASSUMPTIONS$expected_crs_epsg
+)
+
 logic_checks <- list(
   kpi_single_row = nrow(kpi_tiles) == 1L,
   kpi_target_cbsa = kpi_tiles$cbsa_code[1] == TARGET_CBSA,
@@ -67,7 +93,9 @@ logic_checks <- list(
   distribution_metrics = setequal(
     as.character(unique(distribution_long$metric)),
     c("pop_growth_5yr", "units_per_1k_3yr", "pop_density", "median_gross_rent", "median_home_value")
-  )
+  ),
+  market_tract_has_rows = nrow(market_tract_sf) > 0,
+  market_county_has_rows = nrow(market_county_sf) > 0
 )
 
 report <- list(
@@ -77,7 +105,11 @@ report <- list(
     peer_check = peer_check,
     benchmark_check = benchmark_check,
     trend_check = trend_check,
-    distribution_check = distribution_check
+    distribution_check = distribution_check,
+    market_tract_check = market_tract_check,
+    market_tract_geom_check = market_tract_geom_check,
+    market_county_check = market_county_check,
+    market_county_geom_check = market_county_geom_check
   ),
   logic_checks = logic_checks
 )

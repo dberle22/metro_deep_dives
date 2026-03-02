@@ -37,7 +37,7 @@ schema_checks <- list(
     zone_summary,
     c(
       "zone_id", "zone_label", "zone_order", "zone_component_id",
-      "tracts", "total_population", "pop_growth_5yr_wtd", "pop_density_median",
+      "tracts", "total_population", "pop_growth_3yr_wtd", "pop_density_median",
       "units_per_1k_3yr_wtd", "price_proxy_pctl_median", "mean_tract_score", "zone_area_sq_mi"
     ),
     "section_04_zone_summary"

@@ -27,7 +27,7 @@ schema_checks <- list(
     cluster_zone_summary,
     c(
       "cluster_id", "cluster_label", "cluster_order", "tracts", "total_population",
-      "pop_growth_5yr_wtd", "pop_density_median", "units_per_1k_3yr_wtd",
+      "pop_growth_3yr_wtd", "pop_density_median", "units_per_1k_3yr_wtd",
       "price_proxy_pctl_median", "mean_tract_score", "zone_area_sq_mi"
     ),
     "section_04_cluster_zone_summary"

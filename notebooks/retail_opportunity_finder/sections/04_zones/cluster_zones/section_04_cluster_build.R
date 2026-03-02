@@ -7,11 +7,10 @@ initialize_section_runtime()
 message("Running section 04 cluster build")
 
 zone_inputs <- readRDS("notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_zone_input_candidates.rds")
-contiguity_summary <- readRDS("notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_zone_summary.rds")
 
 cluster_params <- list(
   method = "distance_connected_components",
-  eps_meters = 5000,          # TUNE: distance radius (meters). Larger => fewer, bigger clusters.
+  eps_meters = 6000,          # TUNE: distance radius (meters). Larger => fewer, bigger clusters.
   min_pts = 2,                # TUNE: minimum size to be treated as a core component.
   noise_policy = "nearest_core", # TUNE: "singleton" (many small clusters) vs "nearest_core" (fewer clusters).
   projected_epsg = 3086
@@ -88,7 +87,7 @@ assignment_tbl <- zone_inputs_proj %>%
     tract_geoid,
     tract_score,
     pop_total,
-    pop_growth_5yr,
+    pop_growth_3yr,
     pop_density,
     units_per_1k_3yr,
     price_proxy_pctl,
@@ -167,7 +166,7 @@ cluster_assignments <- assignment_tbl %>%
     tracts,
     tract_score,
     pop_total,
-    pop_growth_5yr,
+    pop_growth_3yr,
     pop_density,
     units_per_1k_3yr,
     price_proxy_pctl
@@ -206,7 +205,7 @@ cluster_zone_summary <- zone_inputs %>%
   summarise(
     tracts = dplyr::n(),
     total_population = sum(pop_total, na.rm = TRUE),
-    pop_growth_5yr_wtd = safe_wmean(pop_growth_5yr, pop_total),
+    pop_growth_3yr_wtd = safe_wmean(pop_growth_3yr, pop_total),
     pop_density_median = median(pop_density, na.rm = TRUE),
     units_per_1k_3yr_wtd = safe_wmean(units_per_1k_3yr, pop_total),
     price_proxy_pctl_median = median(price_proxy_pctl, na.rm = TRUE),
@@ -221,25 +220,6 @@ cluster_zone_summary <- zone_inputs %>%
   ) %>%
   arrange(cluster_order)
 
-cluster_vs_contiguity_comparison <- dplyr::bind_rows(
-  contiguity_summary %>%
-    transmute(
-      zone_type = "contiguity",
-      zone_count = dplyr::n_distinct(zone_id),
-      median_tracts_per_zone = median(tracts, na.rm = TRUE),
-      mean_zone_score = mean(mean_tract_score, na.rm = TRUE)
-    ) %>%
-    slice(1),
-  cluster_zone_summary %>%
-    transmute(
-      zone_type = "cluster",
-      zone_count = dplyr::n_distinct(cluster_id),
-      median_tracts_per_zone = median(tracts, na.rm = TRUE),
-      mean_zone_score = mean(mean_tract_score, na.rm = TRUE)
-    ) %>%
-    slice(1)
-)
-
 save_artifact(
   cluster_assignments,
   "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_cluster_assignments.rds"
@@ -251,10 +231,6 @@ save_artifact(
 save_artifact(
   cluster_zone_summary,
   "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_cluster_zone_summary.rds"
-)
-save_artifact(
-  cluster_vs_contiguity_comparison,
-  "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_cluster_vs_contiguity_comparison.rds"
 )
 save_artifact(
   cluster_params,

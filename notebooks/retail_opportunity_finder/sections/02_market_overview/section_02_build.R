@@ -142,6 +142,7 @@ us_vals <- benchmark_table %>% filter(geo_level == "us") %>% slice(1)
 
 benchmark_table <- benchmark_table %>%
   mutate(
+    mean_travel_time = round(mean_travel_time, 2),
     jax_vs_region_pop = if_else(geo_level == "metro", population / region_vals$population, NA_real_),
     jax_vs_us_pop = if_else(geo_level == "metro", population / us_vals$population, NA_real_),
     jax_vs_region_rent = if_else(geo_level == "metro", median_gross_rent / region_vals$median_gross_rent, NA_real_),
@@ -244,9 +245,9 @@ if (do_winsorize) {
 }
 
 metric_labels <- c(
-  pop_growth_5yr = "Population growth (5y)",
-  units_per_1k_3yr = "Units per 1k (3y avg)",
-  pop_density = "Population density (per sq mi)",
+  pop_growth_5yr = "Pop growth (5y)",
+  units_per_1k_3yr = "Units per 1k (3y)",
+  pop_density = "Density (per sq mi)",
   median_gross_rent = "Median rent",
   median_home_value = "Median home value"
 )
@@ -288,6 +289,81 @@ save_artifact(
 save_artifact(
   cbsa_features,
   "notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_cbsa_features.rds"
+)
+
+# Market context map artifact: tract geometries for target CBSA with growth signal.
+tract_features_sql <- file.path(project_root, "notebooks/retail_opportunity_finder/tract_features.sql")
+tract_features <- query_df_sql_file(con, tract_features_sql) %>%
+  filter(as.character(cbsa_code) == as.character(target_cbsa_code)) %>%
+  select(tract_geoid, cbsa_code, county_geoid, pop_growth_3yr, pop_growth_5yr, pop_density, median_gross_rent, median_home_value)
+
+tract_wkb <- DBI::dbGetQuery(con, glue::glue("
+  WITH cbsa_counties AS (
+    SELECT DISTINCT county_geoid, cbsa_code
+    FROM metro_deep_dive.silver.xwalk_cbsa_county
+    WHERE cbsa_code = '{target_cbsa_code}'
+  ),
+  tracts AS (
+    SELECT
+      tract_geoid,
+      printf('%02d%03d', CAST(state_fip AS INTEGER), CAST(county_fip AS INTEGER)) AS county_geoid
+    FROM metro_deep_dive.silver.xwalk_tract_county
+  ),
+  tracts_final AS (
+    SELECT t.tract_geoid, t.county_geoid, c.cbsa_code
+    FROM tracts t
+    JOIN cbsa_counties c ON t.county_geoid = c.county_geoid
+  )
+  SELECT
+    geo.tract_geoid,
+    ST_AsWKB(geo.geom) AS geom_wkb
+  FROM metro_deep_dive.geo.tracts_fl geo
+  INNER JOIN tracts_final tr ON geo.tract_geoid = tr.tract_geoid
+"))
+
+wkb_list <- tract_wkb$geom_wkb
+if (inherits(wkb_list, "blob")) wkb_list <- lapply(wkb_list, function(x) x)
+
+tract_geom <- sf::st_as_sfc(structure(wkb_list, class = "WKB"), crs = GEOMETRY_ASSUMPTIONS$expected_crs_epsg)
+market_tract_sf <- sf::st_sf(
+  tract_geoid = tract_wkb$tract_geoid,
+  geometry = tract_geom
+) %>%
+  left_join(tract_features, by = "tract_geoid")
+
+save_artifact(
+  market_tract_sf,
+  "notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_market_tract_sf.rds"
+)
+
+# County context map artifact: county geometries within target CBSA.
+county_wkb <- DBI::dbGetQuery(con, glue::glue("
+  WITH cbsa_counties AS (
+    SELECT DISTINCT county_geoid
+    FROM metro_deep_dive.silver.xwalk_cbsa_county
+    WHERE cbsa_code = '{target_cbsa_code}'
+  )
+  SELECT
+    county_geoid,
+    county_name,
+    ST_AsWKB(geom) AS geom_wkb
+  FROM metro_deep_dive.geo.counties
+  WHERE county_geoid IN (SELECT county_geoid FROM cbsa_counties)
+"))
+
+county_wkb_list <- county_wkb$geom_wkb
+if (inherits(county_wkb_list, "blob")) county_wkb_list <- lapply(county_wkb_list, function(x) x)
+
+county_geom <- sf::st_as_sfc(structure(county_wkb_list, class = "WKB"), crs = GEOMETRY_ASSUMPTIONS$expected_crs_epsg)
+market_county_sf <- sf::st_sf(
+  county_geoid = county_wkb$county_geoid,
+  county_name = county_wkb$county_name,
+  geometry = county_geom
+)
+
+save_artifact(
+  market_county_sf,
+  "notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_market_county_sf.rds"
 )
 
 message("Section 02 build complete.")

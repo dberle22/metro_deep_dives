@@ -7,6 +7,7 @@ This folder is the dedicated workspace for **Sprint F** (notebook integration + 
 - run integration-specific checks and tests
 - track rendering issues and fixes
 - host visual overrides/customizations used only at integration layer
+- keep non-code planning/sprint docs centralized in `../documents/`
 
 ## Principles
 - Section modules (`sections/03`-`sections/06`) remain source-of-truth for core computation.

@@ -283,6 +283,30 @@ Reorganize SQL + create integration layer under `data_sources/sql` and add a `se
 - Version-controlled SQL transforms
 - Easier to audit data quality from source
 
+### **Proposal 4A: Early-V2 SQL Directory Refactor (Low-Risk, High Clarity)**
+
+**Current State**: SQL files live at ROF root (`cbsa_features.sql`, `tract_features.sql`, `tract_universe.sql`, `tract_features_qa.sql`) with mixed purposes and no explicit ownership boundaries.
+
+**Recommendation (Sprint 1 of V2)**:
+
+1. Create a dedicated SQL root:
+   - `notebooks/retail_opportunity_finder/sql/`
+2. Organize by purpose:
+   - `sql/features/` (production feature queries)
+   - `sql/qa/` (QA/diagnostic queries)
+   - `sql/staging/` (optional intermediate transforms)
+3. Add `sql/README.md` documenting:
+   - query purpose
+   - expected inputs/outputs
+   - execution order
+4. Add a shared config path in `_shared/config.R` for SQL root and reference it from section scripts/docs.
+5. Execute as one path-update PR (move + reference rewires together) to avoid partial broken links.
+
+**Benefits**:
+- Cleaner repo top-level and clearer ownership for each query
+- Lower onboarding friction for contributors working on data foundations
+- Reduced risk of orphaned SQL during V2 model iteration
+
 ---
 
 ## 5. Code Structure Improvements

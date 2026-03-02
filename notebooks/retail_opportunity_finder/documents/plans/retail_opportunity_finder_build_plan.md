@@ -3,8 +3,8 @@
 ## 1) Analysis of the current notebook state
 
 ### What exists now
-- `notebooks/retail_opportunity_finder/retail_opportunity_finder_notebook_flow.md` defines a full V1 vision from setup through parcel shortlist.
-- `notebooks/retail_opportunity_finder/retail_opportunity_finder_dash_v1.qmd` is partially implemented and currently covers:
+- `notebooks/retail_opportunity_finder/documents/plans/retail_opportunity_finder_notebook_flow.md` defines a full V1 vision from setup through parcel shortlist.
+- `notebooks/retail_opportunity_finder/integration/qmd/retail_opportunity_finder_mvp.qmd` is partially implemented and currently covers:
   - Setup, DB connection, geometry loading, quick QA
   - Section 2.1 KPI tiles
   - Section 2.1 peer ranking table
@@ -56,7 +56,7 @@
 4. Add shared utilities:
   - `notebooks/retail_opportunity_finder/sections/_shared/helpers.R`
   - `notebooks/retail_opportunity_finder/sections/_shared/config.R`
-5. Define a simple integration rule: only validated section outputs get pulled into `retail_opportunity_finder_dash_v1.qmd`.
+5. Define a simple integration rule: only validated section outputs get pulled into `integration/qmd/retail_opportunity_finder_mvp.qmd`.
 
 ### Phase 1: Stabilize shared inputs and conventions
 1. Lock KPI definitions in one place (`_shared` docs/comments + dictionary object).
@@ -114,7 +114,7 @@
   - QA summary and validation checks
 
 ### Phase 6: Integrate modules into `.qmd`
-1. Import only final artifacts from section modules into `retail_opportunity_finder_dash_v1.qmd`.
+1. Import only final artifacts from section modules into `integration/qmd/retail_opportunity_finder_mvp.qmd`.
 2. Keep heavy transforms in section scripts; keep `.qmd` focused on narrative + final outputs.
 3. Run full render test after each integration pass.
 
@@ -229,7 +229,7 @@
 **Deliverable:** Section 05 module is independently buildable/testable and integration-ready.
 
 ## Sprint E: Section 6 module (conclusion + appendix)
-- Overview doc: `notebooks/retail_opportunity_finder/sections/06_conclusion_appendix/sprint_overview.md`
+- Overview doc: `notebooks/retail_opportunity_finder/documents/sprints/section_06_sprint_overview.md`
 - [x] Finalize conclusion/appendix module content
 - [x] Build Section 06 artifacts (`build`, `visuals`, `checks`)
 - [x] Validate appendix assumptions/QA references against Sections 03-05 outputs
@@ -250,7 +250,7 @@
 **Deliverable:** Section 06 outputs are finalized and Sprint F integration-ready.
 
 ## Sprint F: Notebook integration + render hardening
-- Overview doc: `notebooks/retail_opportunity_finder/sprint_f_integration_overview.md`
+- Overview doc: `notebooks/retail_opportunity_finder/documents/sprints/sprint_f_integration_overview.md`
 - [ ] Integrate selected outputs from Sections 03-06 into `.qmd`
 - [ ] Run full render and resolve integration/runtime issues
 - [ ] Final formatting consistency pass (labels, units, captions, source notes)
@@ -264,7 +264,7 @@
 Complete notebook integration as a dedicated sprint with render stability and presentation quality as the primary acceptance criteria.
 
 ### Scope
-1. Integrate validated artifacts from Sections 03-06 into `retail_opportunity_finder_dash_v1.qmd`.
+1. Integrate validated artifacts from Sections 03-06 into `integration/qmd/retail_opportunity_finder_mvp.qmd`.
 2. Keep heavy computation in section scripts and keep `.qmd` as reporting layer.
 3. Run full render/fix loop until notebook completes end-to-end without manual intervention.
 

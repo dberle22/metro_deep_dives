@@ -310,7 +310,7 @@ Canonical shared reference: `notebooks/retail_opportunity_finder/sections/_share
 - [x] Mark Sprint D complete only when validation report hard checks pass
 
 ### D6 - Notebook Integration (post-build)
-- [ ] Wire Section 05 artifacts into `retail_opportunity_finder_dash_v1.qmd`
+- [ ] Wire Section 05 artifacts into `integration/qmd/retail_opportunity_finder_mvp.qmd`
 - [ ] Add Section 05 narrative text for corridor signal + shortlist interpretation
 - [ ] Ensure selected reporting mode (dual vs default+alt) is reflected consistently
 - [ ] Run full render and resolve integration regressions

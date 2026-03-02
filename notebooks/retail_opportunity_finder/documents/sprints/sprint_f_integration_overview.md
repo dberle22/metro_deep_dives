@@ -1,7 +1,7 @@
 # Sprint F Overview - Notebook Integration + Render Hardening
 
 ## Objective
-Integrate validated outputs from Sections 03-06 into `retail_opportunity_finder_dash_v1.qmd` and deliver a stable, end-to-end render.
+Integrate validated outputs from Sections 03-06 into `integration/qmd/retail_opportunity_finder_mvp.qmd` and deliver a stable, end-to-end render.
 
 Shared workflow reference: `notebooks/retail_opportunity_finder/sections/_shared/AGENT_INSTRUCTIONS.md`
 
@@ -49,6 +49,6 @@ Shared workflow reference: `notebooks/retail_opportunity_finder/sections/_shared
 - [ ] Final notebook includes conclusion + appendix with assumptions and QA caveats.
 
 ## Proposed Integration Outputs
-- Updated `retail_opportunity_finder_dash_v1.qmd`
+- Updated `integration/qmd/retail_opportunity_finder_mvp.qmd`
 - Render output document(s)
 - Integration validation summary log (path to be finalized during sprint)

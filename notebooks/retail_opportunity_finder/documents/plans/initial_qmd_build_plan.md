@@ -1,12 +1,12 @@
 # Retail Opportunity Finder - Initial QMD Build Plan
 
 ## Goal
-Build an initial, end-to-end `retail_opportunity_finder_dash_v1.qmd` that follows the intended funnel story:
+Build an initial, end-to-end `integration/qmd/retail_opportunity_finder_mvp.qmd` that follows the intended funnel story:
 **Funnel -> Rank -> Cluster -> Shortlist -> Action**
 
 This plan uses:
-- `notebooks/retail_opportunity_finder/retail_opportunity_finder_notebook_flow.md`
-- `notebooks/retail_opportunity_finder/integration/sprint_f_checklist.md`
+- `notebooks/retail_opportunity_finder/documents/plans/retail_opportunity_finder_notebook_flow.md`
+- `notebooks/retail_opportunity_finder/documents/sprints/sprint_f_checklist.md`
 - existing section modules (`sections/01` through `sections/06`)
 
 ## Current Section Readiness (Analysis of 6 built sections)
@@ -209,7 +209,7 @@ End with decisions, next actions, and clear caveats.
 3. Ensure table/plot labeling consistency (percent vs fraction, currency precision, units per 1k).
 
 ### Phase F6 - Integration outputs
-1. Updated `retail_opportunity_finder_dash_v1.qmd`
+1. Updated `integration/qmd/retail_opportunity_finder_mvp.qmd`
 2. Integration validation summary saved under `integration/outputs/`
 3. Optional artifact manifest (`integration/outputs/required_artifact_status.csv`)
 

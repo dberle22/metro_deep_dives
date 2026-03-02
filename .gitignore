@@ -13,15 +13,10 @@ artifacts/
 .env
 .Renviron
 config/paths.R
-*.html
 .DS_Store
 *.rds
 *.csv
 *.xlsx
 *.duckdb
-*_files/
 notebooks/retail_opportunity_finder/sections/02_market_overview/context_layers/cache/
 notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_tract_component_scores.csv
-!notebooks/retail_opportunity_finder/integration/qmd/retail_opportunity_finder_mvp.html
-!notebooks/retail_opportunity_finder/integration/qmd/retail_opportunity_finder_mvp_files/
-!notebooks/retail_opportunity_finder/integration/qmd/retail_opportunity_finder_mvp_files/**

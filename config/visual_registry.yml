@@ -1,0 +1,52 @@
+version: 1
+updated_on: 2026-03-02
+output_format_default: png
+
+charts:
+  - chart_id: line-single-series
+    chart_type: line
+    family: daily-drivers
+    priority: 1
+    status: planned
+    input_contract_id: line-v1
+    output_filename: line-single-series.png
+
+  - chart_id: line-multi-series
+    chart_type: line
+    family: daily-drivers
+    priority: 2
+    status: planned
+    input_contract_id: line-v1
+    output_filename: line-multi-series.png
+
+  - chart_id: scatter-basic
+    chart_type: scatter
+    family: daily-drivers
+    priority: 3
+    status: planned
+    input_contract_id: scatter-v1
+    output_filename: scatter-basic.png
+
+  - chart_id: bar-basic
+    chart_type: bar
+    family: daily-drivers
+    priority: 4
+    status: planned
+    input_contract_id: bar-v1
+    output_filename: bar-basic.png
+
+  - chart_id: choropleth-basic
+    chart_type: choropleth
+    family: daily-drivers
+    priority: 5
+    status: planned
+    input_contract_id: choropleth-v1
+    output_filename: choropleth-basic.png
+
+  - chart_id: hexbin-basic
+    chart_type: hexbin
+    family: daily-drivers
+    priority: 6
+    status: planned
+    input_contract_id: hexbin-v1
+    output_filename: hexbin-basic.png

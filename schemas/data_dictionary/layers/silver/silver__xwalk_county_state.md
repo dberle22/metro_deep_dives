@@ -18,7 +18,7 @@
 
 | Column | DuckDB type | Null % | Distinct | Range / Length | Top values (count) | Definition |
 |---|---|---:|---:|---|---|---|
-| `state_fip` | `VARCHAR` | 0.0000 | 56 | len 2-2 | 48 (254); 13 (159); 51 (133); 21 (120); 29 (115) | State FIPS code. |
+| `state_fip` | `VARCHAR` | 0.0000 | 56 | len 2-2 | 48 (254); 13 (159); 51 (133); 21 (120); 29 (115) | 2-digit state FIPS code. Note: physical column name is `state_fip` (legacy singular naming), semantically equivalent to `state_fips` used in other tables. |
 | `county_fip` | `VARCHAR` | 0.0000 | 333 | len 3-3 | 001 (49); 003 (49); 005 (49); 009 (48); 007 (47) | County FIPS code. |
 | `county_geoid` | `VARCHAR` | 0.0000 | 3235 | len 5-5 | 01001 (1); 01003 (1); 01005 (1); 01007 (1); 01009 (1) | County GEOID, which is a concatenation of the state FIPS code and county FIPS code. |
 | `county_name` | `VARCHAR` | 0.0000 | 1927 | len 3-30 | Washington (31); Franklin (26); Jefferson (26); Jackson (24); Lincoln (24) | County Name. |

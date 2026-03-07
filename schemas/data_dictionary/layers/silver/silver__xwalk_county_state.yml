@@ -30,7 +30,7 @@ columns:
         count: 120
       - value: '29'
         count: 115
-    definition: State FIPS code.
+    definition: "2-digit state FIPS code. Note: physical column name is `state_fip` (legacy singular naming), semantically equivalent to `state_fips` used in other tables."
     needs_confirmation: no
   - name: county_fip
     type: VARCHAR

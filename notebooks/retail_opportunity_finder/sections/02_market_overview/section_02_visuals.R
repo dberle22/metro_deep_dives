@@ -6,16 +6,25 @@ initialize_section_runtime()
 
 message("Running section 02 visuals: 02_market_overview")
 
-kpi_tiles <- readRDS("notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_kpi_tiles.rds")
-peer_table <- readRDS("notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_peer_table.rds")
-benchmark_table <- readRDS("notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_benchmark_table.rds")
-pop_trend_indexed <- readRDS("notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_pop_trend_indexed.rds")
-distribution_long <- readRDS("notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_distribution_long.rds")
-market_tract_sf <- readRDS("notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_market_tract_sf.rds")
-market_county_sf <- readRDS("notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_market_county_sf.rds")
+market_profile <- get_market_profile()
+target_market_label <- market_label("market_name", market_profile)
+target_flag_label <- market_label("target_flag", market_profile)
+benchmark_region_label <- market_profile$benchmark_region_label
 
-context_dir <- "notebooks/retail_opportunity_finder/sections/02_market_overview/context_layers/outputs"
-read_optional_sf <- function(path) {
+kpi_tiles <- readRDS(read_artifact_path("02_market_overview", "section_02_kpi_tiles"))
+peer_table <- readRDS(read_artifact_path("02_market_overview", "section_02_peer_table"))
+benchmark_table <- readRDS(read_artifact_path("02_market_overview", "section_02_benchmark_table"))
+pop_trend_indexed <- readRDS(read_artifact_path("02_market_overview", "section_02_pop_trend_indexed"))
+distribution_long <- readRDS(read_artifact_path("02_market_overview", "section_02_distribution_long"))
+market_tract_sf <- readRDS(read_artifact_path("02_market_overview", "section_02_market_tract_sf"))
+market_county_sf <- readRDS(read_artifact_path("02_market_overview", "section_02_market_county_sf"))
+
+read_optional_sf <- function(section_id, artifact_name, subdir = NULL) {
+  path <- tryCatch(
+    read_artifact_path(section_id, artifact_name, subdir = subdir),
+    error = function(e) NULL
+  )
+  if (is.null(path)) return(NULL)
   if (!file.exists(path)) return(NULL)
   obj <- readRDS(path)
   if (!inherits(obj, "sf")) return(NULL)
@@ -23,11 +32,11 @@ read_optional_sf <- function(path) {
   obj
 }
 
-context_cbsa_sf <- read_optional_sf(file.path(context_dir, "section_02_context_cbsa_boundary_sf.rds"))
-context_county_sf <- read_optional_sf(file.path(context_dir, "section_02_context_county_sf.rds"))
-context_places_sf <- read_optional_sf(file.path(context_dir, "section_02_context_places_sf.rds"))
-context_roads_sf <- read_optional_sf(file.path(context_dir, "section_02_context_major_roads_sf.rds"))
-context_water_sf <- read_optional_sf(file.path(context_dir, "section_02_context_water_sf.rds"))
+context_cbsa_sf <- read_optional_sf("02_market_overview", "section_02_context_cbsa_boundary_sf", subdir = "context_layers")
+context_county_sf <- read_optional_sf("02_market_overview", "section_02_context_county_sf", subdir = "context_layers")
+context_places_sf <- read_optional_sf("02_market_overview", "section_02_context_places_sf", subdir = "context_layers")
+context_roads_sf <- read_optional_sf("02_market_overview", "section_02_context_major_roads_sf", subdir = "context_layers")
+context_water_sf <- read_optional_sf("02_market_overview", "section_02_context_water_sf", subdir = "context_layers")
 
 align_crs <- function(x, target) {
   if (is.null(x)) return(NULL)
@@ -126,7 +135,7 @@ benchmark_gt <- benchmark_table %>%
     mean_travel_time
   ) %>%
   gt::gt(rowname_col = "geo_name") %>%
-  gt::tab_header(title = "Benchmark comparison: Jacksonville vs region vs US (2024)") %>%
+  gt::tab_header(title = glue("Benchmark comparison: {target_flag_label} vs region vs US ({TARGET_YEAR})")) %>%
   gt::tab_spanner(label = "Demand", columns = c(population, pop_growth_5yr)) %>%
   gt::tab_spanner(label = "Supply", columns = c(units_per_1k_3yr)) %>%
   gt::tab_spanner(label = "Housing costs", columns = c(median_gross_rent, median_home_value)) %>%
@@ -158,16 +167,16 @@ pop_trend_plot <- ggplot(pop_trend_indexed, aes(x = year, y = pop_index, color =
     color = NULL
   )
 
-jax_points <- distribution_long %>% filter(is_jax) %>% mutate(metric_x = "All metros")
+target_points <- distribution_long %>% filter(is_target_market) %>% mutate(metric_x = "All metros")
 distribution_long <- distribution_long %>% mutate(metric_x = "All metros")
 
 distribution_plot <- ggplot(distribution_long, aes(x = metric_x, y = value_plot)) +
   geom_jitter(width = 0.15, alpha = 0.10, size = 0.8, color = "#94A3B8") +
   geom_boxplot(width = 0.25, outlier.shape = NA, fill = "#E2E8F0", color = "#475569", linewidth = 0.4) +
-  geom_point(data = jax_points, aes(x = metric_x, y = value_plot), size = 2.8, color = "#B42318") +
+  geom_point(data = target_points, aes(x = metric_x, y = value_plot), size = 2.8, color = "#B42318") +
   geom_label(
-    data = jax_points,
-    aes(x = metric_x, y = value_plot, label = "Jacksonville"),
+    data = target_points,
+    aes(x = metric_x, y = value_plot, label = target_flag_label),
     nudge_x = 0.12,
     size = 2.8,
     label.size = 0.1,
@@ -186,8 +195,8 @@ distribution_plot <- ggplot(distribution_long, aes(x = metric_x, y = value_plot)
     legend.position = "none"
   ) +
   labs(
-    title = "Where Jacksonville sits vs all U.S. metros (2024)",
-    subtitle = "Each panel shows all U.S. metro values with Jacksonville highlighted.",
+    title = glue("Where {target_flag_label} sits vs all U.S. metros ({TARGET_YEAR})"),
+    subtitle = glue("Each panel shows all U.S. metro values with {target_flag_label} highlighted."),
     caption = "Source: section_02_distribution_long.rds"
   )
 
@@ -271,7 +280,7 @@ market_context_map_plot_style_a <- ggplot(market_tract_sf) +
     legend.position = "right"
   ) +
   labs(
-    title = "Jacksonville market context at tract level",
+    title = glue("{target_market_label} context at tract level"),
     subtitle = "Road style test A: color + linetype + linewidth",
     caption = "Sources: Section 02 tract/county artifacts + TIGER roads/water/places context layers"
   )
@@ -348,7 +357,7 @@ market_context_map_plot_style_b <- ggplot(market_tract_sf) +
     legend.position = "right"
   ) +
   labs(
-    title = "Jacksonville market context at tract level",
+    title = glue("{target_market_label} context at tract level"),
     subtitle = "Road style test B: high-contrast colors",
     caption = "Sources: Section 02 tract/county artifacts + TIGER roads/water/places context layers"
   )
@@ -367,11 +376,11 @@ save_artifact(
     pop_trend_plot = pop_trend_plot,
     distribution_plot = distribution_plot
   ),
-  "notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_visual_objects.rds"
+  resolve_output_path("02_market_overview", "section_02_visual_objects")
 )
 
 ggplot2::ggsave(
-  filename = "notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_pop_trend_plot.png",
+  filename = resolve_output_path("02_market_overview", "section_02_pop_trend_plot", ext = "png"),
   plot = pop_trend_plot,
   width = 9,
   height = 5,
@@ -379,21 +388,21 @@ ggplot2::ggsave(
 )
 
 ggplot2::ggsave(
-  filename = "notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_market_context_map.png",
+  filename = resolve_output_path("02_market_overview", "section_02_market_context_map", ext = "png"),
   plot = market_context_map_plot,
   width = 8,
   height = 7,
   dpi = 150
 )
 ggplot2::ggsave(
-  filename = "notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_market_context_map_style_a.png",
+  filename = resolve_output_path("02_market_overview", "section_02_market_context_map_style_a", ext = "png"),
   plot = market_context_map_plot_style_a,
   width = 8,
   height = 7,
   dpi = 150
 )
 ggplot2::ggsave(
-  filename = "notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_market_context_map_style_b.png",
+  filename = resolve_output_path("02_market_overview", "section_02_market_context_map_style_b", ext = "png"),
   plot = market_context_map_plot_style_b,
   width = 8,
   height = 7,
@@ -401,7 +410,7 @@ ggplot2::ggsave(
 )
 
 ggplot2::ggsave(
-  filename = "notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_distribution_plot.png",
+  filename = resolve_output_path("02_market_overview", "section_02_distribution_plot", ext = "png"),
   plot = distribution_plot,
   width = 14,
   height = 4.5,

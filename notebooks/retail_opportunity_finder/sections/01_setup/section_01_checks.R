@@ -6,88 +6,26 @@ initialize_section_runtime()
 
 message("Running section 01 checks: 01_setup")
 
-project_root <- resolve_project_root()
+market_profile <- get_market_profile()
+market_context <- get_market_context()
+market_profile_check <- validate_market_profile(market_profile)
+section_output_dir <- resolve_market_output_dir("01_setup")
 con <- connect_project_duckdb(read_only = TRUE)
 on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
 
-tract_features_sql <- file.path(project_root, "notebooks/retail_opportunity_finder/tract_features.sql")
-cbsa_features_sql <- file.path(project_root, "notebooks/retail_opportunity_finder/cbsa_features.sql")
+tract_features_sql <- resolve_sql_path("tract_features")
+cbsa_features_sql <- resolve_sql_path("cbsa_features")
 
 tract_features <- query_df_sql_file(con, tract_features_sql)
 cbsa_features <- query_df_sql_file(con, cbsa_features_sql)
 
-cbsa_wkb <- DBI::dbGetQuery(con, glue::glue("
-  SELECT
-    cbsa_code,
-    cbsa_name,
-    ST_AsWKB(geom) AS geom_wkb
-  FROM metro_deep_dive.geo.cbsas
-  WHERE cbsa_code = '{TARGET_CBSA}'
-"))
+cbsa_wkb <- query_cbsa_geometry_wkb(con, profile = market_profile, cbsa_code = TARGET_CBSA)
+county_wkb <- query_county_geometry_wkb(con, profile = market_profile, cbsa_code = TARGET_CBSA)
+tract_wkb <- query_tract_geometry_wkb(con, profile = market_profile, cbsa_code = TARGET_CBSA)
 
-county_wkb <- DBI::dbGetQuery(con, glue::glue("
-  WITH cbsa_counties AS (
-    SELECT DISTINCT county_geoid, cbsa_code
-    FROM metro_deep_dive.silver.xwalk_cbsa_county
-    WHERE cbsa_code = '{TARGET_CBSA}'
-  )
-  SELECT
-    c.county_geoid,
-    c.county_name,
-    c.state_fips,
-    cbsa_counties.cbsa_code,
-    ST_AsWKB(c.geom) AS geom_wkb
-  FROM metro_deep_dive.geo.counties c
-  INNER JOIN cbsa_counties ON c.county_geoid = cbsa_counties.county_geoid
-"))
-
-tract_wkb <- DBI::dbGetQuery(con, glue::glue("
-  WITH cbsa_counties AS (
-    SELECT DISTINCT county_geoid, cbsa_code
-    FROM metro_deep_dive.silver.xwalk_cbsa_county
-    WHERE cbsa_code = '{TARGET_CBSA}'
-  ),
-  tracts AS (
-    SELECT
-      tract_geoid,
-      printf('%02d%03d', CAST(state_fip AS INTEGER), CAST(county_fip AS INTEGER)) AS county_geoid
-    FROM metro_deep_dive.silver.xwalk_tract_county
-  ),
-  tracts_final AS (
-    SELECT t.tract_geoid, t.county_geoid, c.cbsa_code
-    FROM tracts t
-    JOIN cbsa_counties c ON t.county_geoid = c.county_geoid
-  )
-  SELECT
-    geo.tract_geoid,
-    geo.county_geoid,
-    geo.state_fips,
-    tr.cbsa_code,
-    geo.geom_wkb
-  FROM metro_deep_dive.geo.tracts_fl geo
-  INNER JOIN tracts_final tr ON geo.tract_geoid = tr.tract_geoid
-"))
-
-cbsa_sf <- {
-  wkb <- cbsa_wkb$geom_wkb[[1]]
-  if (inherits(wkb, "blob")) wkb <- wkb[[1]]
-  geom <- sf::st_as_sfc(structure(list(wkb), class = "WKB"), crs = GEOMETRY_ASSUMPTIONS$expected_crs_epsg)
-  sf::st_sf(cbsa_code = cbsa_wkb$cbsa_code, cbsa_name = cbsa_wkb$cbsa_name, geometry = geom)
-}
-
-county_sf <- {
-  wkb_list <- county_wkb$geom_wkb
-  if (inherits(wkb_list, "blob")) wkb_list <- lapply(wkb_list, function(x) x)
-  geom <- sf::st_as_sfc(structure(wkb_list, class = "WKB"), crs = GEOMETRY_ASSUMPTIONS$expected_crs_epsg)
-  sf::st_sf(county_wkb[, c("county_geoid", "county_name", "state_fips", "cbsa_code")], geometry = geom)
-}
-
-tract_sf <- {
-  wkb_list <- tract_wkb$geom_wkb
-  if (inherits(wkb_list, "blob")) wkb_list <- lapply(wkb_list, function(x) x)
-  geom <- sf::st_as_sfc(structure(wkb_list, class = "WKB"), crs = GEOMETRY_ASSUMPTIONS$expected_crs_epsg)
-  sf::st_sf(tract_wkb[, c("tract_geoid", "county_geoid", "state_fips", "cbsa_code")], geometry = geom)
-}
+cbsa_sf <- sf_from_wkb_df(cbsa_wkb, c("cbsa_code", "cbsa_name"))
+county_sf <- sf_from_wkb_df(county_wkb, c("county_geoid", "county_name", "state_fips", "cbsa_code"))
+tract_sf <- sf_from_wkb_df(tract_wkb, c("tract_geoid", "county_geoid", "state_fips", "cbsa_code"))
 
 column_checks <- list(
   tract_features = validate_columns(tract_features, REQUIRED_COLUMNS$tract_features, "tract_features"),
@@ -123,6 +61,9 @@ geometry_checks <- list(
 
 report <- list(
   run_metadata = run_metadata(),
+  market_context = market_context,
+  output_dir = section_output_dir,
+  market_profile_check = market_profile_check,
   target_cbsa = TARGET_CBSA,
   target_year = TARGET_YEAR,
   column_checks = column_checks,
@@ -133,10 +74,11 @@ report <- list(
 
 save_artifact(
   report,
-  "notebooks/retail_opportunity_finder/sections/01_setup/outputs/section_01_validation_report.rds"
+  resolve_output_path("01_setup", "section_01_validation_report")
 )
 
 all_pass <- all(vapply(column_checks, `[[`, logical(1), "pass")) &&
+  isTRUE(market_profile_check$pass) &&
   all(vapply(key_checks, `[[`, logical(1), "pass")) &&
   all(vapply(geometry_checks, `[[`, logical(1), "pass"))
 

@@ -6,14 +6,28 @@ initialize_section_runtime()
 
 message("Running section 02 build: 02_market_overview")
 
-project_root <- resolve_project_root()
 con <- connect_project_duckdb(read_only = TRUE)
 on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
 
+market_profile <- get_market_profile()
+market_context <- get_market_context()
+market_profile_check <- validate_market_profile(market_profile)
+if (!isTRUE(market_profile_check$pass)) {
+  stop("Active market profile failed validation.", call. = FALSE)
+}
+section_output_dir <- resolve_market_output_dir("02_market_overview")
+
 target_year <- TARGET_YEAR
 target_cbsa_code <- TARGET_CBSA
+target_cbsa_label <- market_label("cbsa_name", market_profile)
+target_market_label <- market_label("market_name", market_profile)
+target_flag_label <- market_label("target_flag", market_profile)
+benchmark_region_type <- market_profile$benchmark_region_type
+benchmark_region_value <- market_profile$benchmark_region_value
+benchmark_region_label <- market_profile$benchmark_region_label
+us_label <- market_label("us_label", market_profile)
 
-cbsa_features_sql <- file.path(project_root, "notebooks/retail_opportunity_finder/cbsa_features.sql")
+cbsa_features_sql <- resolve_sql_path("cbsa_features")
 cbsa_features <- query_df_sql_file(con, cbsa_features_sql)
 
 assert_required_columns(cbsa_features, REQUIRED_COLUMNS$cbsa_features, "cbsa_features")
@@ -33,15 +47,15 @@ format_kpi_value <- function(x, type = c("num", "pct", "usd", "units", "mins")) 
   )
 }
 
-jax_row <- cbsa_features %>%
+target_row <- cbsa_features %>%
   filter(cbsa_code == target_cbsa_code, year == target_year) %>%
   slice(1)
 
-if (nrow(jax_row) != 1) {
-  stop("Expected one Jacksonville row in cbsa_features for target year.", call. = FALSE)
+if (nrow(target_row) != 1) {
+  stop(glue("Expected one target market row in cbsa_features for cbsa_code={target_cbsa_code}, year={target_year}."), call. = FALSE)
 }
 
-kpi_tiles <- jax_row %>%
+kpi_tiles <- target_row %>%
   transmute(
     cbsa_code,
     year,
@@ -61,13 +75,7 @@ kpi_tiles <- jax_row %>%
     mean_commute_min_fmt = paste0(format_kpi_value(mean_commute_min, "mins"), " min")
   )
 
-peer_cbsa_codes <- c(
-  "27260", # Jacksonville
-  "48900", # Wilmington
-  "42340", # Savannah
-  "39580", # Raleigh
-  "24860"  # Greenville
-)
+peer_cbsa_codes <- market_profile$peers
 
 peer_table <- cbsa_features %>%
   filter(cbsa_code %in% peer_cbsa_codes, year == target_year) %>%
@@ -83,10 +91,11 @@ peer_table <- cbsa_features %>%
     median_home_value,
     home_value_rank = region_home_value_rank,
     mean_travel_time = round(mean_travel_time, 2),
-    mean_travel_time_rank = region_travel_time_rank
+    mean_travel_time_rank = region_travel_time_rank,
+    is_target_market = cbsa_code == target_cbsa_code
   )
 
-jax_bench <- jax_row %>%
+target_bench <- target_row %>%
   transmute(
     geo_level = "metro",
     geo_name = cbsa_name,
@@ -100,10 +109,10 @@ jax_bench <- jax_row %>%
   )
 
 region_bench <- cbsa_features %>%
-  filter(year == target_year, census_division == "South Atlantic") %>%
+  filter(year == target_year, .data[[benchmark_region_type]] == benchmark_region_value) %>%
   summarise(
     geo_level = "region",
-    geo_name = "South Atlantic",
+    geo_name = benchmark_region_label,
     year = target_year,
     population = mean(pop_total, na.rm = TRUE),
     pop_growth_5yr = weighted.mean(pop_growth_5yr, pop_total, na.rm = TRUE),
@@ -117,7 +126,7 @@ us_bench <- cbsa_features %>%
   filter(year == target_year) %>%
   summarise(
     geo_level = "us",
-    geo_name = "United States (CBSAs)",
+    geo_name = us_label,
     year = target_year,
     population = mean(pop_total, na.rm = TRUE),
     pop_growth_5yr = weighted.mean(pop_growth_5yr, pop_total, na.rm = TRUE),
@@ -127,7 +136,7 @@ us_bench <- cbsa_features %>%
     mean_travel_time = weighted.mean(mean_travel_time, pop_total, na.rm = TRUE)
   )
 
-benchmark_table <- bind_rows(jax_bench, region_bench, us_bench) %>%
+ benchmark_table <- bind_rows(target_bench, region_bench, us_bench) %>%
   mutate(order = dplyr::case_when(
     geo_level == "metro" ~ 1L,
     geo_level == "region" ~ 2L,
@@ -143,26 +152,26 @@ us_vals <- benchmark_table %>% filter(geo_level == "us") %>% slice(1)
 benchmark_table <- benchmark_table %>%
   mutate(
     mean_travel_time = round(mean_travel_time, 2),
-    jax_vs_region_pop = if_else(geo_level == "metro", population / region_vals$population, NA_real_),
-    jax_vs_us_pop = if_else(geo_level == "metro", population / us_vals$population, NA_real_),
-    jax_vs_region_rent = if_else(geo_level == "metro", median_gross_rent / region_vals$median_gross_rent, NA_real_),
-    jax_vs_us_rent = if_else(geo_level == "metro", median_gross_rent / us_vals$median_gross_rent, NA_real_)
+    target_vs_region_pop = if_else(geo_level == "metro", population / region_vals$population, NA_real_),
+    target_vs_us_pop = if_else(geo_level == "metro", population / us_vals$population, NA_real_),
+    target_vs_region_rent = if_else(geo_level == "metro", median_gross_rent / region_vals$median_gross_rent, NA_real_),
+    target_vs_us_rent = if_else(geo_level == "metro", median_gross_rent / us_vals$median_gross_rent, NA_real_)
   )
 
 pop_trend <- bind_rows(
   cbsa_features %>%
     filter(cbsa_code == target_cbsa_code) %>%
-    transmute(geo = "Jacksonville", year, population = as.numeric(pop_total)),
+    transmute(geo = target_flag_label, year, population = as.numeric(pop_total)),
   cbsa_features %>%
-    filter(census_division == "South Atlantic") %>%
+    filter(.data[[benchmark_region_type]] == benchmark_region_value) %>%
     group_by(year) %>%
     summarise(population = sum(as.numeric(pop_total), na.rm = TRUE), .groups = "drop") %>%
-    mutate(geo = "South Atlantic") %>%
+    mutate(geo = benchmark_region_label) %>%
     select(geo, year, population),
   cbsa_features %>%
     group_by(year) %>%
     summarise(population = sum(as.numeric(pop_total), na.rm = TRUE), .groups = "drop") %>%
-    mutate(geo = "United States (CBSAs)") %>%
+    mutate(geo = us_label) %>%
     select(geo, year, population)
 ) %>%
   distinct(geo, year, .keep_all = TRUE)
@@ -205,12 +214,12 @@ metro_2024 <- cbsa_features %>%
     pct_commute_wfh,
     commute_intensity_b,
     pop_density = if_else(land_area_sq_mi > 0, as.numeric(pop_total) / as.numeric(land_area_sq_mi), NA_real_),
-    is_jax = cbsa_code == target_cbsa_code
+    is_target_market = cbsa_code == target_cbsa_code
   )
 
 distribution_long <- metro_2024 %>%
   select(
-    cbsa_geoid, metro_name, is_jax,
+    cbsa_geoid, metro_name, is_target_market,
     pop_growth_5yr,
     units_per_1k_3yr,
     pop_density,
@@ -218,7 +227,7 @@ distribution_long <- metro_2024 %>%
     median_home_value
   ) %>%
   tidyr::pivot_longer(
-    cols = -c(cbsa_geoid, metro_name, is_jax),
+    cols = -c(cbsa_geoid, metro_name, is_target_market),
     names_to = "metric",
     values_to = "value"
   ) %>%
@@ -268,102 +277,55 @@ distribution_long <- distribution_long %>%
 
 save_artifact(
   kpi_tiles,
-  "notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_kpi_tiles.rds"
+  resolve_output_path("02_market_overview", "section_02_kpi_tiles")
 )
 save_artifact(
   peer_table,
-  "notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_peer_table.rds"
+  resolve_output_path("02_market_overview", "section_02_peer_table")
 )
 save_artifact(
   benchmark_table,
-  "notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_benchmark_table.rds"
+  resolve_output_path("02_market_overview", "section_02_benchmark_table")
 )
 save_artifact(
   pop_trend_indexed,
-  "notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_pop_trend_indexed.rds"
+  resolve_output_path("02_market_overview", "section_02_pop_trend_indexed")
 )
 save_artifact(
   distribution_long,
-  "notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_distribution_long.rds"
+  resolve_output_path("02_market_overview", "section_02_distribution_long")
 )
 save_artifact(
   cbsa_features,
-  "notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_cbsa_features.rds"
+  resolve_output_path("02_market_overview", "section_02_cbsa_features")
+)
+save_artifact(
+  market_profile,
+  resolve_output_path("02_market_overview", "section_02_market_profile")
 )
 
 # Market context map artifact: tract geometries for target CBSA with growth signal.
-tract_features_sql <- file.path(project_root, "notebooks/retail_opportunity_finder/tract_features.sql")
+tract_features_sql <- resolve_sql_path("tract_features")
 tract_features <- query_df_sql_file(con, tract_features_sql) %>%
   filter(as.character(cbsa_code) == as.character(target_cbsa_code)) %>%
   select(tract_geoid, cbsa_code, county_geoid, pop_growth_3yr, pop_growth_5yr, pop_density, median_gross_rent, median_home_value)
 
-tract_wkb <- DBI::dbGetQuery(con, glue::glue("
-  WITH cbsa_counties AS (
-    SELECT DISTINCT county_geoid, cbsa_code
-    FROM metro_deep_dive.silver.xwalk_cbsa_county
-    WHERE cbsa_code = '{target_cbsa_code}'
-  ),
-  tracts AS (
-    SELECT
-      tract_geoid,
-      printf('%02d%03d', CAST(state_fip AS INTEGER), CAST(county_fip AS INTEGER)) AS county_geoid
-    FROM metro_deep_dive.silver.xwalk_tract_county
-  ),
-  tracts_final AS (
-    SELECT t.tract_geoid, t.county_geoid, c.cbsa_code
-    FROM tracts t
-    JOIN cbsa_counties c ON t.county_geoid = c.county_geoid
-  )
-  SELECT
-    geo.tract_geoid,
-    ST_AsWKB(geo.geom) AS geom_wkb
-  FROM metro_deep_dive.geo.tracts_fl geo
-  INNER JOIN tracts_final tr ON geo.tract_geoid = tr.tract_geoid
-"))
-
-wkb_list <- tract_wkb$geom_wkb
-if (inherits(wkb_list, "blob")) wkb_list <- lapply(wkb_list, function(x) x)
-
-tract_geom <- sf::st_as_sfc(structure(wkb_list, class = "WKB"), crs = GEOMETRY_ASSUMPTIONS$expected_crs_epsg)
-market_tract_sf <- sf::st_sf(
-  tract_geoid = tract_wkb$tract_geoid,
-  geometry = tract_geom
-) %>%
+tract_wkb <- query_tract_geometry_wkb(con, profile = market_profile, cbsa_code = target_cbsa_code)
+market_tract_sf <- sf_from_wkb_df(tract_wkb, c("tract_geoid")) %>%
   left_join(tract_features, by = "tract_geoid")
 
 save_artifact(
   market_tract_sf,
-  "notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_market_tract_sf.rds"
+  resolve_output_path("02_market_overview", "section_02_market_tract_sf")
 )
 
 # County context map artifact: county geometries within target CBSA.
-county_wkb <- DBI::dbGetQuery(con, glue::glue("
-  WITH cbsa_counties AS (
-    SELECT DISTINCT county_geoid
-    FROM metro_deep_dive.silver.xwalk_cbsa_county
-    WHERE cbsa_code = '{target_cbsa_code}'
-  )
-  SELECT
-    county_geoid,
-    county_name,
-    ST_AsWKB(geom) AS geom_wkb
-  FROM metro_deep_dive.geo.counties
-  WHERE county_geoid IN (SELECT county_geoid FROM cbsa_counties)
-"))
-
-county_wkb_list <- county_wkb$geom_wkb
-if (inherits(county_wkb_list, "blob")) county_wkb_list <- lapply(county_wkb_list, function(x) x)
-
-county_geom <- sf::st_as_sfc(structure(county_wkb_list, class = "WKB"), crs = GEOMETRY_ASSUMPTIONS$expected_crs_epsg)
-market_county_sf <- sf::st_sf(
-  county_geoid = county_wkb$county_geoid,
-  county_name = county_wkb$county_name,
-  geometry = county_geom
-)
+county_wkb <- query_county_geometry_wkb(con, profile = market_profile, cbsa_code = target_cbsa_code)
+market_county_sf <- sf_from_wkb_df(county_wkb, c("county_geoid", "county_name"))
 
 save_artifact(
   market_county_sf,
-  "notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_market_county_sf.rds"
+  resolve_output_path("02_market_overview", "section_02_market_county_sf")
 )
 
 message("Section 02 build complete.")

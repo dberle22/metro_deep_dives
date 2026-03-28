@@ -8,11 +8,19 @@ message("Running section 01 build: 01_setup")
 
 project_root <- resolve_project_root()
 model_params_check <- validate_model_params(MODEL_PARAMS)
+market_profile <- get_market_profile()
+market_context <- get_market_context()
+market_profile_check <- validate_market_profile(market_profile)
 run_meta <- run_metadata()
+section_output_dir <- resolve_market_output_dir("01_setup")
 
 foundation_payload <- list(
   run_metadata = run_meta,
   project_root = project_root,
+  market_context = market_context,
+  output_dir = section_output_dir,
+  market_profile = market_profile,
+  market_profile_check = market_profile_check,
   model_params = MODEL_PARAMS,
   model_params_check = model_params_check,
   kpi_dictionary = KPI_DICTIONARY,
@@ -21,12 +29,12 @@ foundation_payload <- list(
 
 save_artifact(
   run_meta,
-  "notebooks/retail_opportunity_finder/sections/01_setup/outputs/section_01_run_metadata.rds"
+  resolve_output_path("01_setup", "section_01_run_metadata")
 )
 
 save_artifact(
   foundation_payload,
-  "notebooks/retail_opportunity_finder/sections/01_setup/outputs/section_01_foundation.rds"
+  resolve_output_path("01_setup", "section_01_foundation")
 )
 
 message("Section 01 build complete.")

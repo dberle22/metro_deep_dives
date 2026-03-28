@@ -99,6 +99,11 @@ names(artifacts) <- artifact_manifest$alias
 # Section-level aliases for clean downstream chunks
 run_meta <- artifacts$section01_run_metadata
 foundation <- artifacts$section01_foundation
+market_profile <- foundation$market_profile
+market_labels <- market_profile$labels
+target_market_name <- market_labels$market_name
+target_flag_label <- market_labels$target_flag
+benchmark_region_label <- market_profile$benchmark_region_label
 
 s02_visuals <- artifacts$section02_visual_objects
 s03_visuals <- artifacts$section03_visual_objects
@@ -186,7 +191,7 @@ status_tbl %>% gt::gt()
 
 # Setup and Method
 
-This report helps us find where retail corridor opportunity is most promising in the Jacksonville market.
+This report helps us find where retail corridor opportunity is most promising in the `r target_market_name`.
 We move from broad market context to tract-level screening, then prioritize areas for deeper site review.
 
 ```{r}
@@ -207,7 +212,7 @@ The output is practical:
 Think of the process in three steps:
 
 1. **Market context:**
-We start with a quick check of Jacksonville's growth, housing pressure, and peer position.
+We start with a quick check of `r target_flag_label`'s growth, housing pressure, and peer position.
 2. **Tract screening and ranking:**
 We evaluate tracts using a consistent scorecard to identify where demand momentum and development headroom are strongest.
 3. **Action-oriented prioritization:**
@@ -241,11 +246,13 @@ Important assumptions:
 #| label: s01-run-metadata
 
 run_meta_tbl <- tibble::tibble(
-  field = c("Run timestamp", "R version", "Git hash", "Target CBSA", "Target year"),
+  field = c("Run timestamp", "R version", "Git hash", "Market key", "Market name", "Target CBSA", "Target year"),
   value = c(
     run_meta$run_timestamp,
     run_meta$r_version,
     run_meta$git_hash,
+    run_meta$market_key,
+    run_meta$market_name,
     run_meta$target_cbsa,
     as.character(run_meta$target_year)
   )
@@ -300,7 +307,7 @@ foundation$kpi_dictionary %>%
 
 # Market Overview
 
-Before drilling into tracts, we confirm whether Jacksonville has the type of market conditions where retail corridor expansion is plausible.
+Before drilling into tracts, we confirm whether `r target_flag_label` has the type of market conditions where retail corridor expansion is plausible.
 
 What we look for:
 
@@ -356,7 +363,7 @@ s02_visuals$pop_trend_plot
 #| label: s02-distribution
 #| fig-height: 6
 #| fig-width: 11
-#| fig-cap: "Jacksonville position vs all metro distributions by key metrics. Source: Section 02 artifacts."
+#| fig-cap: "Target market position vs all metro distributions by key metrics. Source: Section 02 artifacts."
 
 s02_visuals$distribution_plot
 ```

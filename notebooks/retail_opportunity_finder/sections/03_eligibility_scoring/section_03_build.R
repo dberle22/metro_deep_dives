@@ -6,11 +6,10 @@ initialize_section_runtime()
 
 message("Running section 03 build: 03_eligibility_scoring")
 
-project_root <- resolve_project_root()
 con <- connect_project_duckdb(read_only = TRUE)
 on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
 
-tract_features_sql <- file.path(project_root, "notebooks/retail_opportunity_finder/tract_features.sql")
+tract_features_sql <- resolve_sql_path("tract_features")
 tract_features <- query_df_sql_file(con, tract_features_sql)
 assert_required_columns(tract_features, REQUIRED_COLUMNS$tract_features, "tract_features")
 
@@ -18,6 +17,7 @@ weights <- MODEL_PARAMS$weights
 target_cbsa <- TARGET_CBSA
 top_n <- MODEL_PARAMS$top_n_tracts
 cluster_top_share <- MODEL_PARAMS$cluster_top_share
+section_output_dir <- resolve_market_output_dir("03_eligibility_scoring")
 
 funnel_counts <- dplyr::tibble(
   step = c(
@@ -254,38 +254,8 @@ growth_hist_input <- tract_features %>%
   select(tract_geoid, pop_growth_3yr, eligible_v1) %>%
   filter(!is.na(pop_growth_3yr))
 
-tract_wkb <- DBI::dbGetQuery(con, glue::glue("
-  WITH cbsa_counties AS (
-    SELECT DISTINCT county_geoid, cbsa_code
-    FROM metro_deep_dive.silver.xwalk_cbsa_county
-    WHERE cbsa_code = '{target_cbsa}'
-  ),
-  tracts AS (
-    SELECT
-      tract_geoid,
-      printf('%02d%03d', CAST(state_fip AS INTEGER), CAST(county_fip AS INTEGER)) AS county_geoid
-    FROM metro_deep_dive.silver.xwalk_tract_county
-  ),
-  tracts_final AS (
-    SELECT t.tract_geoid, t.county_geoid, c.cbsa_code
-    FROM tracts t
-    JOIN cbsa_counties c ON t.county_geoid = c.county_geoid
-  )
-  SELECT
-    geo.tract_geoid,
-    ST_AsWKB(geo.geom) AS geom_wkb
-  FROM metro_deep_dive.geo.tracts_fl geo
-  INNER JOIN tracts_final tr ON geo.tract_geoid = tr.tract_geoid
-"))
-
-wkb_list <- tract_wkb$geom_wkb
-if (inherits(wkb_list, "blob")) wkb_list <- lapply(wkb_list, function(x) x)
-
-tract_geom <- sf::st_as_sfc(structure(wkb_list, class = "WKB"), crs = GEOMETRY_ASSUMPTIONS$expected_crs_epsg)
-tract_sf <- sf::st_sf(
-  tract_geoid = tract_wkb$tract_geoid,
-  geometry = tract_geom
-) %>%
+tract_wkb <- query_tract_geometry_wkb(con, cbsa_code = target_cbsa)
+tract_sf <- sf_from_wkb_df(tract_wkb, c("tract_geoid")) %>%
   left_join(
     tract_features %>% select(tract_geoid, eligible_v1),
     by = "tract_geoid"
@@ -293,43 +263,43 @@ tract_sf <- sf::st_sf(
 
 save_artifact(
   funnel_counts,
-  "notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_funnel_counts.rds"
+  resolve_output_path("03_eligibility_scoring", "section_03_funnel_counts")
 )
 save_artifact(
   eligible_tracts,
-  "notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_eligible_tracts.rds"
+  resolve_output_path("03_eligibility_scoring", "section_03_eligible_tracts")
 )
 save_artifact(
   scored_tracts,
-  "notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_scored_tracts.rds"
+  resolve_output_path("03_eligibility_scoring", "section_03_scored_tracts")
 )
 save_artifact(
   top_tracts,
-  "notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_top_tracts.rds"
+  resolve_output_path("03_eligibility_scoring", "section_03_top_tracts")
 )
 save_artifact(
   cluster_seed_tracts,
-  "notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_cluster_seed_tracts.rds"
+  resolve_output_path("03_eligibility_scoring", "section_03_cluster_seed_tracts")
 )
 save_artifact(
   tract_component_score_table,
-  "notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_tract_component_scores.rds"
+  resolve_output_path("03_eligibility_scoring", "section_03_tract_component_scores")
 )
 readr::write_csv(
   tract_component_score_table,
-  "notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_tract_component_scores.csv"
+  resolve_output_path("03_eligibility_scoring", "section_03_tract_component_scores", ext = "csv")
 )
 save_artifact(
   price_hist_input,
-  "notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_price_hist_input.rds"
+  resolve_output_path("03_eligibility_scoring", "section_03_price_hist_input")
 )
 save_artifact(
   growth_hist_input,
-  "notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_growth_hist_input.rds"
+  resolve_output_path("03_eligibility_scoring", "section_03_growth_hist_input")
 )
 save_artifact(
   tract_sf,
-  "notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_tract_sf.rds"
+  resolve_output_path("03_eligibility_scoring", "section_03_tract_sf")
 )
 
 message("Section 03 build complete.")

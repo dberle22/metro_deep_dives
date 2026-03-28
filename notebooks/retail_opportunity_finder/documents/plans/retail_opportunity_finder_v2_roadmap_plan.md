@@ -22,6 +22,15 @@ This roadmap translates the current ROF MVP into a scalable multi-market, multi-
 - Initiative D: Visual Analytics and Deep Dives
 - Initiative E: QA, Reliability, and Release Operations
 
+## Owner Key
+- `ENG-Data`: Data engineering lead
+- `ENG-Analytics`: Analytics engineering lead
+- `ENG-Spatial`: Spatial/parcels engineering lead
+- `ENG-Model`: Scoring/modeling lead
+- `ENG-Viz`: Visualization/reporting lead
+- `ENG-QA`: QA/automation lead
+- `PM`: Product/project owner
+
 ## Sprint Plan
 
 ## Sprint 1 - Repository and SQL Foundation (Initiative A)
@@ -53,6 +62,15 @@ This roadmap translates the current ROF MVP into a scalable multi-market, multi-
 - No `.sql` files remain at ROF root.
 - Section 01-03 data loads pass using new SQL paths.
 
+### Task Checklist
+- [x] `S1-T1` Create `sql/features`, `sql/qa`, `sql/staging` directories. Owner: `ENG-Data`. Depends on: none.
+- [x] `S1-T2` Move all ROF root SQL files into new SQL structure. Owner: `ENG-Data`. Depends on: `S1-T1`.
+- [x] `S1-T3` Add shared SQL path registry in `_shared/config.R`. Owner: `ENG-Analytics`. Depends on: `S1-T1`.
+- [x] `S1-T4` Refactor Section 01-03 scripts to use registry paths. Owner: `ENG-Analytics`. Depends on: `S1-T2`, `S1-T3`.
+- [x] `S1-T5` Add `sql/README.md` with ownership and query intent. Owner: `ENG-Data`. Depends on: `S1-T2`.
+- [x] `S1-T6` Run smoke validation for Section 01-03 loads and checks. Owner: `ENG-QA`. Depends on: `S1-T4`.
+- [ ] `S1-T7` Approve and merge SQL refactor PR. Owner: `PM`. Depends on: `S1-T5`, `S1-T6`.
+
 ## Sprint 2 - Market Configuration Abstraction (Initiatives A, B)
 ### Objectives
 - Eliminate single-market hardcoding and centralize market metadata.
@@ -72,24 +90,50 @@ This roadmap translates the current ROF MVP into a scalable multi-market, multi-
 ### Exit Criteria
 - Running with a different Florida CBSA requires config change only (no script edits).
 
+### Task Checklist
+- [x] `S2-T1` Design `market_profile` schema (CBSA, peers, region, labels, state scope). Owner: `ENG-Analytics`. Depends on: `S1-T7`.
+- [x] `S2-T2` Implement market config loader/helpers in shared module. Owner: `ENG-Analytics`. Depends on: `S2-T1`.
+- [x] `S2-T3` Refactor Section 02 benchmark + peer logic to config-driven inputs. Owner: `ENG-Analytics`. Depends on: `S2-T2`.
+- [x] `S2-T4` Replace hardcoded market labels in integration QMD with dynamic labels. Owner: `ENG-Viz`. Depends on: `S2-T2`.
+- [x] `S2-T5` Add tests for market config integrity and required fields. Owner: `ENG-QA`. Depends on: `S2-T2`.
+- [x] `S2-T6` Validate alternate Florida CBSA run via config-only switch. Owner: `ENG-QA`. Depends on: `S2-T3`, `S2-T4`, `S2-T5`.
+- [x] `S2-T7` Sign off market abstraction completion. Owner: `PM`. Depends on: `S2-T6`.
+
 ## Sprint 3 - Florida Multi-Market Pipeline Pilot (Initiatives B, E)
 ### Objectives
 - Prove reproducible batch execution across multiple Florida markets.
 - Harden run/output partitioning by market.
+- Preserve market-specific artifacts instead of overwriting prior runs.
+- Begin standing up parcel data infrastructure so county files can be ingested into a structured platform.
 
 ### Scope
 - Add orchestrator script for market batch runs.
 - Parameterize output paths by market and run timestamp.
+- Save artifacts to market-specific files/directories so Jacksonville, Orlando, Gainesville, and future markets can be reviewed side by side.
 - Remove state-specific geometry table assumptions where possible (or isolate behind adapter).
+- Design parcel ETL foundation for county CSV/SHP ingest into a structured database layer.
+- Define normalized parcel landing/storage pattern to support downstream ROF parcel inputs.
 - Pilot two Florida markets end-to-end (Jacksonville + one additional CBSA).
 
 ### Deliverables
 - Batch run script and run manifest outputs.
+- Market-partitioned artifact layout with no default-file overwrites during multi-market runs.
+- Parcel ETL/database foundation design note with recommended storage model and ingest contract.
 - Two successful Florida market renders.
 - Pilot summary with runtime and QA pass/fail status.
 
 ### Exit Criteria
 - Two-market Florida run executes from one command and produces isolated artifacts.
+- Output files for different markets can be inspected independently after the run.
+
+### Task Checklist
+- [ ] `S3-T1` Build batch orchestrator for multi-market runs. Owner: `ENG-Analytics`. Depends on: `S2-T7`.
+- [ ] `S3-T2` Add output partitioning by market + run id/timestamp. Owner: `ENG-Data`. Depends on: `S3-T1`.
+- [ ] `S3-T3` Implement geometry-source adapter to reduce state-table hardcoding. Owner: `ENG-Spatial`. Depends on: `S2-T7`.
+- [ ] `S3-T4` Design parcel ETL/database foundation for county CSV/SHP storage and normalized ingest. Owner: `ENG-Data`. Depends on: `S2-T7`.
+- [ ] `S3-T5` Configure and run Jacksonville + one additional Florida CBSA with isolated outputs. Owner: `ENG-Analytics`. Depends on: `S3-T1`, `S3-T2`, `S3-T3`.
+- [ ] `S3-T6` Produce pilot run manifest (runtime, pass/fail, artifact paths, per-market output locations). Owner: `ENG-QA`. Depends on: `S3-T5`.
+- [ ] `S3-T7` Approve Florida pilot checkpoint for release gate. Owner: `PM`. Depends on: `S3-T4`, `S3-T6`.
 
 ## Sprint 4 - Ranking Engine Modularization and Versioning (Initiative C)
 ### Objectives
@@ -112,6 +156,15 @@ This roadmap translates the current ROF MVP into a scalable multi-market, multi-
 ### Exit Criteria
 - Switching model versions is config-only.
 - Artifacts clearly state which scoring model produced them.
+
+### Task Checklist
+- [ ] `S4-T1` Define scoring model registry structure (tract + parcel model specs). Owner: `ENG-Model`. Depends on: `S3-T6`.
+- [ ] `S4-T2` Implement scoring registry module with version IDs and metadata. Owner: `ENG-Model`. Depends on: `S4-T1`.
+- [ ] `S4-T3` Refactor Section 03 to call registry-driven tract scoring. Owner: `ENG-Model`. Depends on: `S4-T2`.
+- [ ] `S4-T4` Refactor Section 05 to call registry-driven shortlist scoring. Owner: `ENG-Model`. Depends on: `S4-T2`.
+- [ ] `S4-T5` Add sensitivity outputs (top-N overlap, rank correlation). Owner: `ENG-Analytics`. Depends on: `S4-T3`, `S4-T4`.
+- [ ] `S4-T6` Add tests for deterministic ranking and model metadata propagation. Owner: `ENG-QA`. Depends on: `S4-T3`, `S4-T4`.
+- [ ] `S4-T7` Approve scoring v2 framework baseline. Owner: `PM`. Depends on: `S4-T5`, `S4-T6`.
 
 ## Sprint 5 - Multi-State Parcel Data Platform (GA, SC, NC) (Initiatives B, E)
 ### Objectives
@@ -137,6 +190,19 @@ This roadmap translates the current ROF MVP into a scalable multi-market, multi-
 - GA, SC, and NC parcel inputs are ingested and queryable in canonical form.
 - Section 05 can read canonical parcel inputs without state-specific code forks.
 
+### Task Checklist
+- [ ] `S5-T1` Inventory GA/SC/NC source systems, schemas, and refresh cadence. Owner: `ENG-Spatial`. Depends on: `S3-T7`.
+- [ ] `S5-T2` Define canonical cross-state parcel contract (required + optional columns). Owner: `ENG-Spatial`. Depends on: `S5-T1`.
+- [ ] `S5-T3` Implement GA adapter and ingestion pipeline. Owner: `ENG-Spatial`. Depends on: `S5-T2`.
+- [ ] `S5-T4` Implement SC adapter and ingestion pipeline. Owner: `ENG-Spatial`. Depends on: `S5-T2`.
+- [ ] `S5-T5` Implement NC adapter and ingestion pipeline. Owner: `ENG-Spatial`. Depends on: `S5-T2`.
+- [ ] `S5-T6` Implement partitioned storage/layout by state, county, vintage, run id. Owner: `ENG-Data`. Depends on: `S5-T3`, `S5-T4`, `S5-T5`.
+- [ ] `S5-T7` Add lineage metadata and manifests for every state ingest. Owner: `ENG-Data`. Depends on: `S5-T6`.
+- [ ] `S5-T8` Add cross-state parcel QA checks (schema coverage, geometry validity, join readiness). Owner: `ENG-QA`. Depends on: `S5-T3`, `S5-T4`, `S5-T5`, `S5-T7`.
+- [ ] `S5-T9` Refactor Section 05 input layer to canonical parcel model only. Owner: `ENG-Analytics`. Depends on: `S5-T2`, `S5-T6`.
+- [ ] `S5-T10` Validate one market run per new state using canonical parcel input. Owner: `ENG-QA`. Depends on: `S5-T8`, `S5-T9`.
+- [ ] `S5-T11` Approve multi-state parcel platform checkpoint. Owner: `PM`. Depends on: `S5-T10`.
+
 ## Sprint 6 - Visual Deep Dives and Decision UX (Initiative D)
 ### Objectives
 - Improve interpretability and actionability of outputs.
@@ -156,6 +222,15 @@ This roadmap translates the current ROF MVP into a scalable multi-market, multi-
 
 ### Exit Criteria
 - Each market report includes baseline views + at least one standardized deep-dive section.
+
+### Task Checklist
+- [ ] `S6-T1` Define deep-dive visual specs (zone cards, score drivers, comparison views). Owner: `ENG-Viz`. Depends on: `S4-T7`, `S5-T11`.
+- [ ] `S6-T2` Implement section 03/05 component-contribution visuals. Owner: `ENG-Viz`. Depends on: `S6-T1`.
+- [ ] `S6-T3` Implement zone-level deep-dive cards and comparison visuals. Owner: `ENG-Viz`. Depends on: `S6-T1`.
+- [ ] `S6-T4` Update integration QMD flow to include deep-dive modules. Owner: `ENG-Viz`. Depends on: `S6-T2`, `S6-T3`.
+- [ ] `S6-T5` Update visual contracts and output checks for new objects. Owner: `ENG-Analytics`. Depends on: `S6-T2`, `S6-T3`.
+- [ ] `S6-T6` Run visual QA pass across sample markets. Owner: `ENG-QA`. Depends on: `S6-T4`, `S6-T5`.
+- [ ] `S6-T7` Approve deep-dive UX baseline. Owner: `PM`. Depends on: `S6-T6`.
 
 ## Sprint 7 - Release Hardening and V2 Launch Candidate (Initiative E)
 ### Objectives
@@ -179,76 +254,7 @@ This roadmap translates the current ROF MVP into a scalable multi-market, multi-
 - CI passes for designated smoke markets.
 - At least one non-Florida market completes end-to-end without code branching.
 
-## Task-Level Execution Checklist (All Sprints)
-Owner assignments below are role-based placeholders and should be mapped to named individuals at sprint kickoff.
-
-## Owner Key
-- `ENG-Data`: Data engineering lead
-- `ENG-Analytics`: Analytics engineering lead
-- `ENG-Spatial`: Spatial/parcels engineering lead
-- `ENG-Model`: Scoring/modeling lead
-- `ENG-Viz`: Visualization/reporting lead
-- `ENG-QA`: QA/automation lead
-- `PM`: Product/project owner
-
-## Sprint 1 Checklist - Repository and SQL Foundation
-- [ ] `S1-T1` Create `sql/features`, `sql/qa`, `sql/staging` directories. Owner: `ENG-Data`. Depends on: none.
-- [ ] `S1-T2` Move all ROF root SQL files into new SQL structure. Owner: `ENG-Data`. Depends on: `S1-T1`.
-- [ ] `S1-T3` Add shared SQL path registry in `_shared/config.R`. Owner: `ENG-Analytics`. Depends on: `S1-T1`.
-- [ ] `S1-T4` Refactor Section 01-03 scripts to use registry paths. Owner: `ENG-Analytics`. Depends on: `S1-T2`, `S1-T3`.
-- [ ] `S1-T5` Add `sql/README.md` with ownership and query intent. Owner: `ENG-Data`. Depends on: `S1-T2`.
-- [ ] `S1-T6` Run smoke validation for Section 01-03 loads and checks. Owner: `ENG-QA`. Depends on: `S1-T4`.
-- [ ] `S1-T7` Approve and merge SQL refactor PR. Owner: `PM`. Depends on: `S1-T5`, `S1-T6`.
-
-## Sprint 2 Checklist - Market Configuration Abstraction
-- [ ] `S2-T1` Design `market_profile` schema (CBSA, peers, region, labels, state scope). Owner: `ENG-Analytics`. Depends on: `S1-T7`.
-- [ ] `S2-T2` Implement market config loader/helpers in shared module. Owner: `ENG-Analytics`. Depends on: `S2-T1`.
-- [ ] `S2-T3` Refactor Section 02 benchmark + peer logic to config-driven inputs. Owner: `ENG-Analytics`. Depends on: `S2-T2`.
-- [ ] `S2-T4` Replace hardcoded market labels in integration QMD with dynamic labels. Owner: `ENG-Viz`. Depends on: `S2-T2`.
-- [ ] `S2-T5` Add tests for market config integrity and required fields. Owner: `ENG-QA`. Depends on: `S2-T2`.
-- [ ] `S2-T6` Validate alternate Florida CBSA run via config-only switch. Owner: `ENG-QA`. Depends on: `S2-T3`, `S2-T4`, `S2-T5`.
-- [ ] `S2-T7` Sign off market abstraction completion. Owner: `PM`. Depends on: `S2-T6`.
-
-## Sprint 3 Checklist - Florida Multi-Market Pipeline Pilot
-- [ ] `S3-T1` Build batch orchestrator for multi-market runs. Owner: `ENG-Analytics`. Depends on: `S2-T7`.
-- [ ] `S3-T2` Add output partitioning by market + run id/timestamp. Owner: `ENG-Data`. Depends on: `S3-T1`.
-- [ ] `S3-T3` Implement geometry-source adapter to reduce state-table hardcoding. Owner: `ENG-Spatial`. Depends on: `S2-T7`.
-- [ ] `S3-T4` Configure and run Jacksonville + one additional Florida CBSA. Owner: `ENG-Analytics`. Depends on: `S3-T1`, `S3-T2`, `S3-T3`.
-- [ ] `S3-T5` Produce pilot run manifest (runtime, pass/fail, artifact paths). Owner: `ENG-QA`. Depends on: `S3-T4`.
-- [ ] `S3-T6` Approve Florida pilot checkpoint for release gate. Owner: `PM`. Depends on: `S3-T5`.
-
-## Sprint 4 Checklist - Ranking Engine Modularization and Versioning
-- [ ] `S4-T1` Define scoring model registry structure (tract + parcel model specs). Owner: `ENG-Model`. Depends on: `S3-T6`.
-- [ ] `S4-T2` Implement scoring registry module with version IDs and metadata. Owner: `ENG-Model`. Depends on: `S4-T1`.
-- [ ] `S4-T3` Refactor Section 03 to call registry-driven tract scoring. Owner: `ENG-Model`. Depends on: `S4-T2`.
-- [ ] `S4-T4` Refactor Section 05 to call registry-driven shortlist scoring. Owner: `ENG-Model`. Depends on: `S4-T2`.
-- [ ] `S4-T5` Add sensitivity outputs (top-N overlap, rank correlation). Owner: `ENG-Analytics`. Depends on: `S4-T3`, `S4-T4`.
-- [ ] `S4-T6` Add tests for deterministic ranking and model metadata propagation. Owner: `ENG-QA`. Depends on: `S4-T3`, `S4-T4`.
-- [ ] `S4-T7` Approve scoring v2 framework baseline. Owner: `PM`. Depends on: `S4-T5`, `S4-T6`.
-
-## Sprint 5 Checklist - Multi-State Parcel Data Platform (GA, SC, NC)
-- [ ] `S5-T1` Inventory GA/SC/NC source systems, schemas, and refresh cadence. Owner: `ENG-Spatial`. Depends on: `S3-T6`.
-- [ ] `S5-T2` Define canonical cross-state parcel contract (required + optional columns). Owner: `ENG-Spatial`. Depends on: `S5-T1`.
-- [ ] `S5-T3` Implement GA adapter and ingestion pipeline. Owner: `ENG-Spatial`. Depends on: `S5-T2`.
-- [ ] `S5-T4` Implement SC adapter and ingestion pipeline. Owner: `ENG-Spatial`. Depends on: `S5-T2`.
-- [ ] `S5-T5` Implement NC adapter and ingestion pipeline. Owner: `ENG-Spatial`. Depends on: `S5-T2`.
-- [ ] `S5-T6` Implement partitioned storage/layout by state, county, vintage, run id. Owner: `ENG-Data`. Depends on: `S5-T3`, `S5-T4`, `S5-T5`.
-- [ ] `S5-T7` Add lineage metadata and manifests for every state ingest. Owner: `ENG-Data`. Depends on: `S5-T6`.
-- [ ] `S5-T8` Add cross-state parcel QA checks (schema coverage, geometry validity, join readiness). Owner: `ENG-QA`. Depends on: `S5-T3`, `S5-T4`, `S5-T5`, `S5-T7`.
-- [ ] `S5-T9` Refactor Section 05 input layer to canonical parcel model only. Owner: `ENG-Analytics`. Depends on: `S5-T2`, `S5-T6`.
-- [ ] `S5-T10` Validate one market run per new state using canonical parcel input. Owner: `ENG-QA`. Depends on: `S5-T8`, `S5-T9`.
-- [ ] `S5-T11` Approve multi-state parcel platform checkpoint. Owner: `PM`. Depends on: `S5-T10`.
-
-## Sprint 6 Checklist - Visual Deep Dives and Decision UX
-- [ ] `S6-T1` Define deep-dive visual specs (zone cards, score drivers, comparison views). Owner: `ENG-Viz`. Depends on: `S4-T7`, `S5-T11`.
-- [ ] `S6-T2` Implement section 03/05 component-contribution visuals. Owner: `ENG-Viz`. Depends on: `S6-T1`.
-- [ ] `S6-T3` Implement zone-level deep-dive cards and comparison visuals. Owner: `ENG-Viz`. Depends on: `S6-T1`.
-- [ ] `S6-T4` Update integration QMD flow to include deep-dive modules. Owner: `ENG-Viz`. Depends on: `S6-T2`, `S6-T3`.
-- [ ] `S6-T5` Update visual contracts and output checks for new objects. Owner: `ENG-Analytics`. Depends on: `S6-T2`, `S6-T3`.
-- [ ] `S6-T6` Run visual QA pass across sample markets. Owner: `ENG-QA`. Depends on: `S6-T4`, `S6-T5`.
-- [ ] `S6-T7` Approve deep-dive UX baseline. Owner: `PM`. Depends on: `S6-T6`.
-
-## Sprint 7 Checklist - Release Hardening and V2 Launch Candidate
+### Task Checklist
 - [ ] `S7-T1` Implement automated contract + determinism + portability tests in CI. Owner: `ENG-QA`. Depends on: `S6-T7`.
 - [ ] `S7-T2` Add CI smoke runs for selected markets/states. Owner: `ENG-QA`. Depends on: `S7-T1`.
 - [ ] `S7-T3` Publish new-market/new-state onboarding runbook. Owner: `ENG-Analytics`. Depends on: `S7-T2`.
@@ -259,8 +265,9 @@ Owner assignments below are role-based placeholders and should be mapped to name
 ## Dependency and Sequencing Rules
 1. Sprint 1 must complete before broad refactors that touch SQL consumers.
 2. Sprint 2 must complete before Sprint 3 batch orchestration to avoid rework.
-3. Sprint 4 (scoring modularization) should complete before final deep-dive UX lock in Sprint 6.
-4. Sprint 5 (multi-state parcels) is a standalone full sprint and is required before V2 launch hardening.
+3. Sprint 3 should establish output partitioning and parcel ETL/database foundations before broader multi-state parcel ingestion work.
+4. Sprint 4 (scoring modularization) should complete before final deep-dive UX lock in Sprint 6.
+5. Sprint 5 (multi-state parcels) is a standalone full sprint and is required before V2 launch hardening.
 
 ## Success Metrics
 - Operational

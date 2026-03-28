@@ -6,13 +6,15 @@ initialize_section_runtime()
 
 message("Running section 03 checks: 03_eligibility_scoring")
 
-funnel_counts <- readRDS("notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_funnel_counts.rds")
-eligible_tracts <- readRDS("notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_eligible_tracts.rds")
-scored_tracts <- readRDS("notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_scored_tracts.rds")
-top_tracts <- readRDS("notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_top_tracts.rds")
-cluster_seed_tracts <- readRDS("notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_cluster_seed_tracts.rds")
-tract_component_scores <- readRDS("notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_tract_component_scores.rds")
-tract_sf <- readRDS("notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_tract_sf.rds")
+market_context <- get_market_context()
+section_output_dir <- resolve_market_output_dir("03_eligibility_scoring")
+funnel_counts <- readRDS(read_artifact_path("03_eligibility_scoring", "section_03_funnel_counts"))
+eligible_tracts <- readRDS(read_artifact_path("03_eligibility_scoring", "section_03_eligible_tracts"))
+scored_tracts <- readRDS(read_artifact_path("03_eligibility_scoring", "section_03_scored_tracts"))
+top_tracts <- readRDS(read_artifact_path("03_eligibility_scoring", "section_03_top_tracts"))
+cluster_seed_tracts <- readRDS(read_artifact_path("03_eligibility_scoring", "section_03_cluster_seed_tracts"))
+tract_component_scores <- readRDS(read_artifact_path("03_eligibility_scoring", "section_03_tract_component_scores"))
+tract_sf <- readRDS(read_artifact_path("03_eligibility_scoring", "section_03_tract_sf"))
 
 funnel_check <- validate_columns(
   funnel_counts,
@@ -79,6 +81,8 @@ logic_checks <- list(
 
 report <- list(
   run_metadata = run_metadata(),
+  market_context = market_context,
+  output_dir = section_output_dir,
   checks = list(
     funnel_check = funnel_check,
     eligible_check = eligible_check,
@@ -93,7 +97,7 @@ report <- list(
 
 save_artifact(
   report,
-  "notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_validation_report.rds"
+  resolve_output_path("03_eligibility_scoring", "section_03_validation_report")
 )
 
 schema_pass <- all(vapply(report$checks[1:6], `[[`, logical(1), "pass")) && isTRUE(report$checks$geometry_check$pass)

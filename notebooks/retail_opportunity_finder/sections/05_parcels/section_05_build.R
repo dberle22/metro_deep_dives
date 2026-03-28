@@ -26,7 +26,8 @@ normalize_for_spatial_ops <- function(sf_obj, object_name, target_epsg = analysi
 # Step D1: Input readiness and canonicalization (cluster-only)
 cluster_zone_path <- "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_cluster_zones.rds"
 cluster_zone_summary_path <- "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_cluster_zone_summary.rds"
-parcel_root <- "notebooks/retail_opportunity_finder/sections/05_parcels/parcel_standardization/outputs/fl_all_v2"
+parcel_root <- resolve_parcel_standardized_root()
+parcel_manifest_path <- file.path(parcel_root, "parcel_ingest_manifest.rds")
 
 required_paths <- c(
   cluster_zone_path,
@@ -86,7 +87,8 @@ zones_canonical_geom_check <- validate_sf(
   storage_crs_epsg
 )
 
-parcel_geometry_paths <- Sys.glob(file.path(parcel_root, "county_outputs", "*", "parcel_geometries_analysis.rds"))
+parcel_ingest_manifest <- if (file.exists(parcel_manifest_path)) readRDS(parcel_manifest_path) else NULL
+parcel_geometry_paths <- resolve_parcel_analysis_paths(parcel_root)
 if (length(parcel_geometry_paths) == 0) {
   stop(
     glue::glue("No county parcel geometry files found under {parcel_root}/county_outputs/*/parcel_geometries_analysis.rds"),
@@ -231,6 +233,7 @@ readiness_report <- list(
     cluster_zone_path = cluster_zone_path,
     cluster_zone_summary_path = cluster_zone_summary_path,
     parcel_root = parcel_root,
+    parcel_manifest_path = if (file.exists(parcel_manifest_path)) parcel_manifest_path else NA_character_,
     parcel_geometry_files = parcel_geometry_paths
   ),
   schema_checks = list(
@@ -251,6 +254,7 @@ readiness_report <- list(
   counts = list(
     cluster_zones = nrow(cluster_zones),
     canonical_zone_rows = nrow(zones_canonical),
+    parcel_manifest_rows = if (is.null(parcel_ingest_manifest)) 0L else nrow(parcel_ingest_manifest),
     parcel_county_files = length(parcel_geometry_paths),
     parcels_raw_rows = nrow(parcels_raw),
     parcels_canonical_rows = nrow(parcels_canonical)

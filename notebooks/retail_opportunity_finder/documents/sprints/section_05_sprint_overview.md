@@ -103,12 +103,11 @@ Canonical shared reference: `notebooks/retail_opportunity_finder/sections/_share
   - `zone_system`, `zone_id`, `zone_label`, `geometry`.
 
 ### Step 2 - Parcel source ingestion and normalization
-- Run upstream standardization scripts in:
-  - `parcel_standardization/00_config.R`
-  - `parcel_standardization/01_ingest_parcel_tabular.R`
-  - `parcel_standardization/02_prepare_parcel_geometry.R`
-  - `parcel_standardization/03_publish_parcels_duckdb.R`
-- Load standardized outputs (DuckDB tables or `parcel_standardization/outputs/*.rds`) into Section 05.
+- Run the manual county parcel ETL:
+  - `parcel_standardization/parcel_etl_manual_county_v2.R`
+- Load standardized outputs from:
+  - DuckDB table `rof_parcel.parcel_tabular_clean`
+  - county geometry `.rds` files under `property_taxes/parcel_geom/<state>/`
 - Required minimum columns:
   - `parcel_id`
   - `geometry`

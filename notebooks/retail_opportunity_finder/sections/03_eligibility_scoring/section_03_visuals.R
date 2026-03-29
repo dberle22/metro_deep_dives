@@ -6,17 +6,21 @@ initialize_section_runtime()
 
 message("Running section 03 visuals: 03_eligibility_scoring")
 
-funnel_counts <- readRDS("notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_funnel_counts.rds")
-scored_tracts <- readRDS("notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_scored_tracts.rds")
-top_tracts <- readRDS("notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_top_tracts.rds")
-price_hist_input <- readRDS("notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_price_hist_input.rds")
-growth_hist_input <- readRDS("notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_growth_hist_input.rds")
-tract_sf <- readRDS("notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_tract_sf.rds")
-tract_component_scores <- readRDS("notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_tract_component_scores.rds")
-market_county_sf <- readRDS("notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_market_county_sf.rds")
+funnel_counts <- readRDS(read_artifact_path("03_eligibility_scoring", "section_03_funnel_counts"))
+scored_tracts <- readRDS(read_artifact_path("03_eligibility_scoring", "section_03_scored_tracts"))
+top_tracts <- readRDS(read_artifact_path("03_eligibility_scoring", "section_03_top_tracts"))
+price_hist_input <- readRDS(read_artifact_path("03_eligibility_scoring", "section_03_price_hist_input"))
+growth_hist_input <- readRDS(read_artifact_path("03_eligibility_scoring", "section_03_growth_hist_input"))
+tract_sf <- readRDS(read_artifact_path("03_eligibility_scoring", "section_03_tract_sf"))
+tract_component_scores <- readRDS(read_artifact_path("03_eligibility_scoring", "section_03_tract_component_scores"))
+market_county_sf <- readRDS(read_artifact_path("02_market_overview", "section_02_market_county_sf"))
 
-context_dir <- "notebooks/retail_opportunity_finder/sections/02_market_overview/context_layers/outputs"
-read_optional_sf <- function(path) {
+read_optional_sf <- function(section_id, artifact_name, subdir = NULL) {
+  path <- tryCatch(
+    read_artifact_path(section_id, artifact_name, subdir = subdir),
+    error = function(e) NULL
+  )
+  if (is.null(path)) return(NULL)
   if (!file.exists(path)) return(NULL)
   obj <- readRDS(path)
   if (!inherits(obj, "sf")) return(NULL)
@@ -24,11 +28,11 @@ read_optional_sf <- function(path) {
   obj
 }
 
-context_cbsa_sf <- read_optional_sf(file.path(context_dir, "section_02_context_cbsa_boundary_sf.rds"))
-context_county_sf <- read_optional_sf(file.path(context_dir, "section_02_context_county_sf.rds"))
-context_places_sf <- read_optional_sf(file.path(context_dir, "section_02_context_places_sf.rds"))
-context_roads_sf <- read_optional_sf(file.path(context_dir, "section_02_context_major_roads_sf.rds"))
-context_water_sf <- read_optional_sf(file.path(context_dir, "section_02_context_water_sf.rds"))
+context_cbsa_sf <- read_optional_sf("02_market_overview", "section_02_context_cbsa_boundary_sf", subdir = "context_layers")
+context_county_sf <- read_optional_sf("02_market_overview", "section_02_context_county_sf", subdir = "context_layers")
+context_places_sf <- read_optional_sf("02_market_overview", "section_02_context_places_sf", subdir = "context_layers")
+context_roads_sf <- read_optional_sf("02_market_overview", "section_02_context_major_roads_sf", subdir = "context_layers")
+context_water_sf <- read_optional_sf("02_market_overview", "section_02_context_water_sf", subdir = "context_layers")
 
 align_crs <- function(x, target) {
   if (is.null(x)) return(NULL)
@@ -280,39 +284,39 @@ save_artifact(
     top_tracts_gt = top_tracts_gt,
     component_score_table = component_score_table
   ),
-  "notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_visual_objects.rds"
+  resolve_output_path("03_eligibility_scoring", "section_03_visual_objects")
 )
 
 ggplot2::ggsave(
-  filename = "notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_price_hist.png",
+  filename = resolve_output_path("03_eligibility_scoring", "section_03_price_hist", ext = "png"),
   plot = price_hist_plot,
   width = 8,
   height = 5,
   dpi = 150
 )
 ggplot2::ggsave(
-  filename = "notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_growth_hist.png",
+  filename = resolve_output_path("03_eligibility_scoring", "section_03_growth_hist", ext = "png"),
   plot = growth_hist_plot,
   width = 8,
   height = 5,
   dpi = 150
 )
 ggplot2::ggsave(
-  filename = "notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_eligible_map.png",
+  filename = resolve_output_path("03_eligibility_scoring", "section_03_eligible_map", ext = "png"),
   plot = eligible_map_plot,
   width = 8,
   height = 6,
   dpi = 150
 )
 ggplot2::ggsave(
-  filename = "notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_score_hist.png",
+  filename = resolve_output_path("03_eligibility_scoring", "section_03_score_hist", ext = "png"),
   plot = score_hist_plot,
   width = 8,
   height = 5,
   dpi = 150
 )
 ggplot2::ggsave(
-  filename = "notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_growth_density_scatter.png",
+  filename = resolve_output_path("03_eligibility_scoring", "section_03_growth_density_scatter", ext = "png"),
   plot = growth_density_scatter,
   width = 8,
   height = 5,

@@ -22,7 +22,7 @@ options(
   tigris_cache_dir = normalizePath(cache_dir, winslash = "/", mustWork = FALSE)
 )
 
-out_dir <- "notebooks/retail_opportunity_finder/sections/02_market_overview/context_layers/outputs"
+out_dir <- resolve_market_output_dir("02_market_overview", subdir = "context_layers")
 if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
 
 target_cbsa <- TARGET_CBSA
@@ -125,6 +125,8 @@ save_artifact(water_sf, file.path(out_dir, "section_02_context_water_sf.rds"))
 
 ingest_report <- list(
   run_metadata = run_metadata(),
+  market_context = get_market_context(),
+  output_dir = out_dir,
   target_cbsa = target_cbsa,
   target_year = target_year,
   source = "tigris_only",

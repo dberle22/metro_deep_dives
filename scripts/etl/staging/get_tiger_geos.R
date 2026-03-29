@@ -28,6 +28,7 @@ dbExecute(con, "CREATE SCHEMA IF NOT EXISTS metro_deep_dive.geo;")
 # Set Vars 
 year <- 2024
 SQM_PER_SQMI <- 2589988.110336
+tract_states <- c("FL", "GA", "SC", "NC")
 
 # ---- Helper: write sf -> duckdb with WKB + (optional) DuckDB geom column ----
 write_sf_duckdb <- function(con, sf_obj, fq_table, make_geom_col = TRUE) {
@@ -89,38 +90,66 @@ counties <- tigris::counties(cb = TRUE, year = year) %>%
 
 write_sf_duckdb(con, counties, "metro_deep_dive.geo.counties")
 
-## Tracts FL ----
-tracts_fl <- tigris::tracts(state = "FL", cb = TRUE, year = year) %>%
-  mutate(
-    tract_geoid  = GEOID,
-    state_fips   = STATEFP,
-    county_fips  = COUNTYFP,
-    county_geoid = paste0(STATEFP, COUNTYFP),
-    tract_name   = NAME,
-    aland_m2 = as.numeric(ALAND),
-    awater_m2 = as.numeric(AWATER),
-    land_area_sqmi  = aland_m2 / SQM_PER_SQMI,
-    water_area_sqmi = awater_m2 / SQM_PER_SQMI
-  )
+## Tracts FL/GA/SC/NC ----
+build_tract_geometries <- function(state_abbr, year, cb = TRUE) {
+  tigris::tracts(state = state_abbr, cb = cb, year = year) %>%
+    mutate(
+      tract_geoid = GEOID,
+      state_fips = STATEFP,
+      state_abbr = state_abbr,
+      county_fips = COUNTYFP,
+      county_geoid = paste0(STATEFP, COUNTYFP),
+      tract_name = NAME,
+      aland_m2 = as.numeric(ALAND),
+      awater_m2 = as.numeric(AWATER),
+      land_area_sqmi = aland_m2 / SQM_PER_SQMI,
+      water_area_sqmi = awater_m2 / SQM_PER_SQMI
+    )
+}
 
-write_sf_duckdb(con, tracts_fl, "metro_deep_dive.geo.tracts_fl")
+tract_tables <- setNames(
+  paste0("metro_deep_dive.geo.tracts_", tolower(tract_states)),
+  tract_states
+)
+
+tracts_by_state <- lapply(tract_states, function(state_abbr) {
+  message(glue("Downloading tract geometries for {state_abbr} ({year})"))
+  build_tract_geometries(state_abbr = state_abbr, year = year)
+})
+names(tracts_by_state) <- tract_states
+
+for (state_abbr in tract_states) {
+  write_sf_duckdb(con, tracts_by_state[[state_abbr]], tract_tables[[state_abbr]])
+}
+
+tracts_supported_states <- dplyr::bind_rows(tracts_by_state)
+write_sf_duckdb(con, tracts_supported_states, "metro_deep_dive.geo.tracts_supported_states")
 
 # Validations ----
 print(dbGetQuery(con, "SELECT COUNT(*) n FROM metro_deep_dive.geo.states;"))
 print(dbGetQuery(con, "SELECT COUNT(*) n FROM metro_deep_dive.geo.cbsas;"))
 print(dbGetQuery(con, "SELECT COUNT(*) n FROM metro_deep_dive.geo.counties;"))
-print(dbGetQuery(con, "SELECT COUNT(*) n FROM metro_deep_dive.geo.tracts_fl;"))
+
+for (state_abbr in tract_states) {
+  print(dbGetQuery(
+    con,
+    glue("SELECT '{state_abbr}' AS state_abbr, COUNT(*) AS n FROM {tract_tables[[state_abbr]]};")
+  ))
+}
+
+print(dbGetQuery(con, "SELECT COUNT(*) n FROM metro_deep_dive.geo.tracts_supported_states;"))
 
 # Quick column checks
-print(dbGetQuery(con, "DESCRIBE metro_deep_dive.geo.tracts_fl;"))
+print(dbGetQuery(con, "DESCRIBE metro_deep_dive.geo.tracts_supported_states;"))
 
 # Land area sanity (tracts)
 print(dbGetQuery(con, "
   SELECT
+    COUNT(DISTINCT state_abbr) AS states_loaded,
     MIN(land_area_sqmi) min_sqmi,
     MAX(land_area_sqmi) max_sqmi,
     AVG(land_area_sqmi) avg_sqmi
-  FROM metro_deep_dive.geo.tracts_fl;
+  FROM metro_deep_dive.geo.tracts_supported_states;
 "))
 
 dbDisconnect(con, shutdown = TRUE)

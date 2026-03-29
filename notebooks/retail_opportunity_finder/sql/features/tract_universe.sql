@@ -36,7 +36,7 @@ select geo.tract_geoid,
 	tr.cbsa_code,
 	geo.geom_wkb,
 	geo.geom
-from metro_deep_dive.geo.tracts_fl geo 
+from metro_deep_dive.geo.tracts_supported_states geo 
 inner join tracts_final tr 
 	on geo.tract_geoid = tr.tract_geoid
 

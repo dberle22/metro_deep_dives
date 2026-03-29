@@ -20,5 +20,9 @@ config/paths.R
 *.duckdb
 notebooks/retail_opportunity_finder/sections/02_market_overview/context_layers/cache/
 notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_tract_component_scores.csv
+notebooks/retail_opportunity_finder/integration/outputs/market_batch_logs/
+notebooks/retail_opportunity_finder/sections/01_setup/outputs/
+notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/
+notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/
 *.html
 !docs/**/*.html

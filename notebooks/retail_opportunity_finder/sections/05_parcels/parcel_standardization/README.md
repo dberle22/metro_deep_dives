@@ -1,57 +1,53 @@
-# Parcel Standardization Workspace (Upstream of Section 05)
+# Parcel Standardization
 
-This folder is the dedicated preprocessing pipeline for parcel data.
+This folder now centers on one manual county ETL:
 
-Goal:
-- ingest parcel CSV exports, metadata lookups, and parcel shapefiles
-- standardize schema and types once
-- publish reusable county-level outputs for Section 05
+- `parcel_etl_manual_county_v2.R`
 
-Section 05 analysis scripts should read from these standardized outputs, not raw county files.
+That script is the working parcel standardization path for Section 05.
 
-## Folder layout
+## Current Workflow
 
-- `00_config.R` - path and runtime configuration
-- `01_ingest_parcel_tabular.R` - CSV + metadata ingestion and normalization
-- `02_prepare_parcel_geometry.R` - shapefile ingestion and geometry enrichment
-- `03_publish_parcels_duckdb.R` - publish standardized artifacts to DuckDB
-- `outputs/` - local standardized artifacts (`.rds`, `.gpkg`)
+The current workflow is intentionally manual and county-first:
 
-## Required environment variables
+1. set county config directly in `parcel_etl_manual_county_v2.R`
+2. read and clean one county tabular file
+3. write county tabular rows into `rof_parcel.parcel_tabular_clean`
+4. read and trim one county geometry file
+5. write one county geometry `.rds`
+6. run an in-memory tabular-to-geometry join check
+7. write county QA artifacts locally
 
-- `PROPERTY_TAX_ROOT`: root folder for parcel datasets across states
-  (example: `/Users/.../property_taxes`).
+This keeps the expensive spatial data out of DuckDB and stores county geometry
+as lightweight R artifacts instead.
 
-Default derived paths:
-- `${PROPERTY_TAX_ROOT}/${PROPERTY_STATE}/data` for parcel CSV + shapefiles
-- `${PROPERTY_TAX_ROOT}/${PROPERTY_STATE}/docs` for metadata lookups
+## Active Files
 
-Optional:
-- `PROPERTY_STATE`: defaults to `fl`
-- `PROPERTY_DATA_ROOT`: override state data folder
-- `PROPERTY_METADATA_ROOT`: override state metadata folder
-- `PROPERTY_SHAPE_ROOT`: override shapefile root (defaults to data root)
-- `PARCEL_STANDARDIZED_ROOT`: override output folder for standardized artifacts.
-- `PARCEL_DUCKDB_PATH`: explicit DuckDB target path for publishing.
-- `PARCEL_WRITE_GPKG`: set `true` to also write `.gpkg` (default `false`)
-- `DATA`: used as fallback for DuckDB path (`${DATA}/duckdb/metro_deep_dive.duckdb`).
+- `parcel_etl_manual_county_v2.R`
+  Manual county ETL used for current parcel onboarding and reruns.
 
-## Run order
+- `fl_county_run_checklist.md`
+  Florida county completion checklist for the current manual workflow.
 
-1. `source(".../00_config.R")`
-2. `source(".../01_ingest_parcel_tabular.R")`
-3. `source(".../02_prepare_parcel_geometry.R")`
-4. `source(".../03_publish_parcels_duckdb.R")`
+## Output Contract
 
-## Published outputs
+DuckDB:
 
-Local files:
-- `outputs/parcel_attributes_standardized.rds`
-- `outputs/county_outputs/<county_tag>/parcel_geometries_raw.rds`
-- `outputs/county_outputs/<county_tag>/parcel_geometries_analysis.rds`
-- `outputs/county_outputs/<county_tag>/parcel_geometry_join_qa.rds`
-- `outputs/parcel_geometry_join_qa_county_summary.rds`
+- `rof_parcel.parcel_tabular_clean`
+  County-scoped tabular rows, replaced one county at a time by `county_tag`.
 
-DuckDB tables:
-- `parcel_attributes_standardized`
-- `parcel_geometries_standardized`
+Geometry on disk:
+
+- `/Users/danberle/Documents/projects/data/property_taxes/parcel_geom/<state>/<county_tag>_geom.rds`
+
+QA on disk:
+
+- `/Users/danberle/Documents/projects/data/property_taxes/parcel_geom/<state>/qa/<county_tag>_join_qa.rds`
+- `/Users/danberle/Documents/projects/data/property_taxes/parcel_geom/<state>/qa/<county_tag>_join_qa_unmatched.csv`
+
+## Notes
+
+- Geometry duplicates are preserved in the current workflow.
+- County geometry is stored for spatial analysis and plotting, not in DuckDB.
+- If a county has problematic geometry, use `repair_invalid_geom <- TRUE` in
+  `parcel_etl_manual_county_v2.R` only when needed.

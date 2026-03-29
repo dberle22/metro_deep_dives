@@ -6,13 +6,17 @@ initialize_section_runtime()
 
 message("Running section 02 checks: 02_market_overview")
 
-kpi_tiles <- readRDS("notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_kpi_tiles.rds")
-peer_table <- readRDS("notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_peer_table.rds")
-benchmark_table <- readRDS("notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_benchmark_table.rds")
-pop_trend_indexed <- readRDS("notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_pop_trend_indexed.rds")
-distribution_long <- readRDS("notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_distribution_long.rds")
-market_tract_sf <- readRDS("notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_market_tract_sf.rds")
-market_county_sf <- readRDS("notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_market_county_sf.rds")
+market_profile <- get_market_profile()
+market_context <- get_market_context()
+market_profile_check <- validate_market_profile(market_profile)
+section_output_dir <- resolve_market_output_dir("02_market_overview")
+kpi_tiles <- readRDS(read_artifact_path("02_market_overview", "section_02_kpi_tiles"))
+peer_table <- readRDS(read_artifact_path("02_market_overview", "section_02_peer_table"))
+benchmark_table <- readRDS(read_artifact_path("02_market_overview", "section_02_benchmark_table"))
+pop_trend_indexed <- readRDS(read_artifact_path("02_market_overview", "section_02_pop_trend_indexed"))
+distribution_long <- readRDS(read_artifact_path("02_market_overview", "section_02_distribution_long"))
+market_tract_sf <- readRDS(read_artifact_path("02_market_overview", "section_02_market_tract_sf"))
+market_county_sf <- readRDS(read_artifact_path("02_market_overview", "section_02_market_county_sf"))
 
 kpi_check <- validate_columns(
   kpi_tiles,
@@ -54,7 +58,7 @@ trend_check <- validate_columns(
 
 distribution_check <- validate_columns(
   distribution_long,
-  c("cbsa_geoid", "metro_name", "is_jax", "metric", "value", "value_plot", "metric_label"),
+  c("cbsa_geoid", "metro_name", "is_target_market", "metric", "value", "value_plot", "metric_label"),
   "section_02_distribution_long"
 )
 
@@ -83,13 +87,21 @@ market_county_geom_check <- validate_sf(
 )
 
 logic_checks <- list(
+  market_profile_valid = isTRUE(market_profile_check$pass),
   kpi_single_row = nrow(kpi_tiles) == 1L,
   kpi_target_cbsa = kpi_tiles$cbsa_code[1] == TARGET_CBSA,
-  peer_has_jax = any(peer_table$cbsa_code == TARGET_CBSA),
+  peer_has_target_market = any(peer_table$cbsa_code == TARGET_CBSA),
   benchmark_levels = setequal(unique(benchmark_table$geo_level), c("metro", "region", "us")),
-  trend_geos = setequal(unique(pop_trend_indexed$geo), c("Jacksonville", "South Atlantic", "United States (CBSAs)")),
+  trend_geos = setequal(
+    unique(pop_trend_indexed$geo),
+    c(
+      market_profile$labels$target_flag,
+      market_profile$benchmark_region_label,
+      market_profile$labels$us_label
+    )
+  ),
   trend_index_finite = all(is.finite(pop_trend_indexed$pop_index)),
-  distribution_has_jax = any(distribution_long$is_jax),
+  distribution_has_target_market = any(distribution_long$is_target_market),
   distribution_metrics = setequal(
     as.character(unique(distribution_long$metric)),
     c("pop_growth_5yr", "units_per_1k_3yr", "pop_density", "median_gross_rent", "median_home_value")
@@ -100,6 +112,9 @@ logic_checks <- list(
 
 report <- list(
   run_metadata = run_metadata(),
+  market_context = market_context,
+  output_dir = section_output_dir,
+  market_profile_check = market_profile_check,
   checks = list(
     kpi_check = kpi_check,
     peer_check = peer_check,
@@ -116,7 +131,7 @@ report <- list(
 
 save_artifact(
   report,
-  "notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_validation_report.rds"
+  resolve_output_path("02_market_overview", "section_02_validation_report")
 )
 
 schema_pass <- all(vapply(report$checks, `[[`, logical(1), "pass"))

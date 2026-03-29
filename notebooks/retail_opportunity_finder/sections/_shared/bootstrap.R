@@ -6,11 +6,15 @@
 
 initialize_section_runtime <- function() {
   project_utils <- "scripts/utils.R"
+  shared_market_profiles <- "notebooks/retail_opportunity_finder/sections/_shared/market_profiles.R"
   shared_config <- "notebooks/retail_opportunity_finder/sections/_shared/config.R"
   shared_helpers <- "notebooks/retail_opportunity_finder/sections/_shared/helpers.R"
 
   if (!file.exists(project_utils)) {
     stop("Missing required runtime file: scripts/utils.R", call. = FALSE)
+  }
+  if (!file.exists(shared_market_profiles)) {
+    stop("Missing shared market profiles file.", call. = FALSE)
   }
   if (!file.exists(shared_config)) {
     stop("Missing section config file.", call. = FALSE)
@@ -20,6 +24,7 @@ initialize_section_runtime <- function() {
   }
 
   source(project_utils)
+  source(shared_market_profiles)
   source(shared_config)
   source(shared_helpers)
 

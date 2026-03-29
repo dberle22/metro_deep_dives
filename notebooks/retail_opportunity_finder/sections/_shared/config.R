@@ -1,7 +1,17 @@
 # Shared configuration for Retail Opportunity Finder section modules
 
-# Core identifiers
-TARGET_CBSA <- "27260" # Jacksonville, FL
+# Market selection
+ACTIVE_MARKET_KEY <- Sys.getenv("ROF_MARKET_KEY", unset = "jacksonville_fl")
+if (!ACTIVE_MARKET_KEY %in% names(MARKET_PROFILES)) {
+  stop(
+    paste0(
+      "Unknown ROF_MARKET_KEY: ", ACTIVE_MARKET_KEY,
+      ". Valid options: ", paste(names(MARKET_PROFILES), collapse = ", ")
+    ),
+    call. = FALSE
+  )
+}
+TARGET_CBSA <- MARKET_PROFILES[[ACTIVE_MARKET_KEY]]$cbsa_code
 TARGET_VINTAGE <- "2024_5yr"
 BASELINE_VINTAGE <- "2019_5yr"
 TARGET_YEAR <- 2024
@@ -25,6 +35,47 @@ MODEL_PARAMS <- list(
 
 # Output root for section artifacts
 SECTION_OUTPUT_ROOT <- "notebooks/retail_opportunity_finder/sections"
+
+# Parcel foundation inputs for Section 05.
+PARCEL_STANDARDIZATION_ROOT_DEFAULT <- file.path(
+  SECTION_OUTPUT_ROOT,
+  "05_parcels",
+  "parcel_standardization",
+  "outputs",
+  "fl_all_v2"
+)
+PARCEL_STANDARDIZATION_ROOT <- Sys.getenv(
+  "ROF_PARCEL_STANDARDIZED_ROOT",
+  unset = PARCEL_STANDARDIZATION_ROOT_DEFAULT
+)
+PARCEL_DUCKDB_SCHEMA <- "rof_parcel"
+
+# SQL registry for section query inputs
+SQL_ROOT <- "notebooks/retail_opportunity_finder/sql"
+SQL_PATHS <- list(
+  features = list(
+    cbsa_features = file.path(SQL_ROOT, "features", "cbsa_features.sql"),
+    tract_features = file.path(SQL_ROOT, "features", "tract_features.sql"),
+    tract_universe = file.path(SQL_ROOT, "features", "tract_universe.sql")
+  ),
+  qa = list(
+    tract_features = file.path(SQL_ROOT, "qa", "tract_features_qa.sql")
+  ),
+  staging = list()
+)
+
+# Geometry source registry for Sprint 3.
+# County and CBSA boundary tables remain shared; tract geometry is state-scoped.
+GEOMETRY_SOURCE_REGISTRY <- list(
+  cbsa_table = "metro_deep_dive.geo.cbsas",
+  county_table = "metro_deep_dive.geo.counties",
+  tract_tables = list(
+    FL = "metro_deep_dive.geo.tracts_fl",
+    GA = "metro_deep_dive.geo.tracts_ga",
+    SC = "metro_deep_dive.geo.tracts_sc",
+    NC = "metro_deep_dive.geo.tracts_nc"
+  )
+)
 
 # Optional toggles
 ENABLE_SENSITIVITY <- FALSE

@@ -108,7 +108,7 @@ geom as (
   SELECT
     tract_geoid,
     CAST(land_area_sqmi AS DOUBLE) AS land_area_sqmi
-  FROM metro_deep_dive.geo.tracts_fl
+  FROM metro_deep_dive.geo.tracts_supported_states
 ),
 
 /* 4) Assemble base feature rows for target year */
@@ -304,4 +304,3 @@ ORDER BY tract_geoid
 
 select *
 from tract_features
-

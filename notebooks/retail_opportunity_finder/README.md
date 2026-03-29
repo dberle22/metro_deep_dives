@@ -30,6 +30,10 @@ Per section convention:
   - `plans/`: notebook flow and build plans
   - `sprints/`: sprint overviews and checklists
   - `improvements/`: MVP and V2 improvement logs
+- `sql/`
+  - `features/`: reusable section feature queries
+  - `qa/`: SQL QA and inspection queries
+  - `staging/`: reserved for future intermediate SQL transforms
 - `legacy/`: older dashboard assets retained for reference only
 - `sections/_shared/`: shared bootstrap/config/helper functions and project-level contracts
 

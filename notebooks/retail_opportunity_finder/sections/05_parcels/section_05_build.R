@@ -8,6 +8,7 @@ message("Running section 05 build: 05_parcels")
 
 storage_crs_epsg <- GEOMETRY_ASSUMPTIONS$expected_crs_epsg
 analysis_crs_epsg <- if (!is.null(GEOMETRY_ASSUMPTIONS$analysis_crs_epsg)) GEOMETRY_ASSUMPTIONS$analysis_crs_epsg else 5070
+section_output_dir <- resolve_market_output_dir("05_parcels")
 
 normalize_for_spatial_ops <- function(sf_obj, object_name, target_epsg = analysis_crs_epsg) {
   if (!inherits(sf_obj, "sf")) {
@@ -24,8 +25,8 @@ normalize_for_spatial_ops <- function(sf_obj, object_name, target_epsg = analysi
 }
 
 # Step D1: Input readiness and canonicalization (cluster-only)
-cluster_zone_path <- "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_cluster_zones.rds"
-cluster_zone_summary_path <- "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_cluster_zone_summary.rds"
+cluster_zone_path <- read_artifact_path("04_zones", "section_04_cluster_zones")
+cluster_zone_summary_path <- read_artifact_path("04_zones", "section_04_cluster_zone_summary")
 parcel_root <- resolve_parcel_standardized_root()
 parcel_manifest_path <- file.path(parcel_root, "parcel_ingest_manifest.rds")
 
@@ -278,15 +279,15 @@ readiness_report <- list(
 
 save_artifact(
   zones_canonical,
-  "notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_zones_canonical.rds"
+  resolve_output_path("05_parcels", "section_05_zones_canonical")
 )
 save_artifact(
   parcels_canonical,
-  "notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_parcels_canonical.rds"
+  resolve_output_path("05_parcels", "section_05_parcels_canonical")
 )
 save_artifact(
   readiness_report,
-  "notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_input_readiness_report.rds"
+  resolve_output_path("05_parcels", "section_05_input_readiness_report")
 )
 
 if (!isTRUE(readiness_report$pass)) {
@@ -298,7 +299,7 @@ message(glue::glue(
 ))
 
 # Step D2: Retail classification and tract-level retail intensity
-mapping_path <- "notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_retail_land_use_mapping_candidates_v0_1.csv"
+mapping_path <- read_artifact_path("05_parcels", "section_05_retail_land_use_mapping_candidates_v0_1", ext = "csv")
 if (!file.exists(mapping_path)) {
   stop(glue::glue("Missing retail mapping file: {mapping_path}"), call. = FALSE)
 }
@@ -351,10 +352,10 @@ retail_classified_parcels$parcel_area_sqmi <- dplyr::coalesce(
 
 save_artifact(
   retail_classified_parcels,
-  "notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_retail_classified_parcels.rds"
+  resolve_output_path("05_parcels", "section_05_retail_classified_parcels")
 )
 
-tract_sf <- readRDS("notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_tract_sf.rds") %>%
+tract_sf <- readRDS(read_artifact_path("03_eligibility_scoring", "section_03_tract_sf")) %>%
   select(tract_geoid, geometry)
 
 tract_schema_check <- validate_columns(tract_sf, c("tract_geoid", "geometry"), "section_03_tract_sf")
@@ -439,11 +440,11 @@ retail_intensity_report <- list(
 
 save_artifact(
   retail_intensity,
-  "notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_retail_intensity.rds"
+  resolve_output_path("05_parcels", "section_05_retail_intensity")
 )
 save_artifact(
   retail_intensity_report,
-  "notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_retail_intensity_report.rds"
+  resolve_output_path("05_parcels", "section_05_retail_intensity_report")
 )
 
 message(glue::glue(
@@ -451,7 +452,7 @@ message(glue::glue(
 ))
 
 # Step D3: Cluster zone overlays and parcel shortlist candidates
-cluster_assignments <- readRDS("notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_cluster_assignments.rds")
+cluster_assignments <- readRDS(read_artifact_path("04_zones", "section_04_cluster_assignments"))
 
 cluster_assignments_check <- validate_columns(
   cluster_assignments,
@@ -531,7 +532,7 @@ zone_overlay_cluster <- tract_zone_map %>%
 
 save_artifact(
   zone_overlay_cluster,
-  "notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_zone_overlay_cluster.rds"
+  resolve_output_path("05_parcels", "section_05_zone_overlay_cluster")
 )
 
 zones_cluster_proj <- normalize_for_spatial_ops(
@@ -625,7 +626,7 @@ parcel_shortlist_cluster <- parcel_shortlist_scored %>%
 
 save_artifact(
   parcel_shortlist_cluster,
-  "notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_parcel_shortlist_cluster.rds"
+  resolve_output_path("05_parcels", "section_05_parcel_shortlist_cluster")
 )
 
 shortlist_report <- list(
@@ -658,7 +659,7 @@ shortlist_report <- list(
 
 save_artifact(
   shortlist_report,
-  "notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_shortlist_report.rds"
+  resolve_output_path("05_parcels", "section_05_shortlist_report")
 )
 
 if (!isTRUE(shortlist_report$pass)) {

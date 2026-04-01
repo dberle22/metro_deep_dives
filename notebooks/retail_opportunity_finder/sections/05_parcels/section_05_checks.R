@@ -6,13 +6,13 @@ initialize_section_runtime()
 
 message("Running section 05 checks: 05_parcels")
 
-parcels_canonical <- readRDS("notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_parcels_canonical.rds")
-retail_classified_parcels <- readRDS("notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_retail_classified_parcels.rds")
-retail_intensity <- readRDS("notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_retail_intensity.rds")
-zone_overlay_cluster <- readRDS("notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_zone_overlay_cluster.rds")
-parcel_shortlist_cluster <- readRDS("notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_parcel_shortlist_cluster.rds")
-retail_intensity_report <- readRDS("notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_retail_intensity_report.rds")
-shortlist_report <- readRDS("notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_shortlist_report.rds")
+parcels_canonical <- readRDS(read_artifact_path("05_parcels", "section_05_parcels_canonical"))
+retail_classified_parcels <- readRDS(read_artifact_path("05_parcels", "section_05_retail_classified_parcels"))
+retail_intensity <- readRDS(read_artifact_path("05_parcels", "section_05_retail_intensity"))
+zone_overlay_cluster <- readRDS(read_artifact_path("05_parcels", "section_05_zone_overlay_cluster"))
+parcel_shortlist_cluster <- readRDS(read_artifact_path("05_parcels", "section_05_parcel_shortlist_cluster"))
+retail_intensity_report <- readRDS(read_artifact_path("05_parcels", "section_05_retail_intensity_report"))
+shortlist_report <- readRDS(read_artifact_path("05_parcels", "section_05_shortlist_report"))
 
 schema_checks <- list(
   parcels_canonical = validate_columns(
@@ -151,7 +151,7 @@ validation_report <- list(
 
 save_artifact(
   validation_report,
-  "notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_validation_report.rds"
+  resolve_output_path("05_parcels", "section_05_validation_report")
 )
 
 if (!isTRUE(validation_report$pass)) {

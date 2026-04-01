@@ -6,8 +6,8 @@ initialize_section_runtime()
 
 message("Running section 06 visuals: 06_conclusion_appendix")
 
-conclusion_payload <- readRDS("notebooks/retail_opportunity_finder/sections/06_conclusion_appendix/outputs/section_06_conclusion_payload.rds")
-appendix_payload <- readRDS("notebooks/retail_opportunity_finder/sections/06_conclusion_appendix/outputs/section_06_appendix_payload.rds")
+conclusion_payload <- readRDS(read_artifact_path("06_conclusion_appendix", "section_06_conclusion_payload"))
+appendix_payload <- readRDS(read_artifact_path("06_conclusion_appendix", "section_06_appendix_payload"))
 
 conclusion_summary_table <- conclusion_payload$highlights$cluster_zone_highlights %>%
   gt::gt() %>%
@@ -77,7 +77,7 @@ save_artifact(
     assumptions_caveats_table = assumptions_caveats_table,
     recommendations_table = recommendations_table
   ),
-  "notebooks/retail_opportunity_finder/sections/06_conclusion_appendix/outputs/section_06_visual_objects.rds"
+  resolve_output_path("06_conclusion_appendix", "section_06_visual_objects")
 )
 
 message("Section 06 visuals complete.")

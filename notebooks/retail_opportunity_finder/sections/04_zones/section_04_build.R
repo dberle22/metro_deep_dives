@@ -7,10 +7,11 @@ initialize_section_runtime()
 message("Running section 04 build: 04_zones")
 
 # Step 1: Load and validate Sprint B inputs
-scored_tracts <- readRDS("notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_scored_tracts.rds")
-tract_sf <- readRDS("notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_tract_sf.rds")
-tract_component_scores <- readRDS("notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_tract_component_scores.rds")
-cluster_seed_tracts <- readRDS("notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_cluster_seed_tracts.rds")
+section_output_dir <- resolve_market_output_dir("04_zones")
+scored_tracts <- readRDS(read_artifact_path("03_eligibility_scoring", "section_03_scored_tracts"))
+tract_sf <- readRDS(read_artifact_path("03_eligibility_scoring", "section_03_tract_sf"))
+tract_component_scores <- readRDS(read_artifact_path("03_eligibility_scoring", "section_03_tract_component_scores"))
+cluster_seed_tracts <- readRDS(read_artifact_path("03_eligibility_scoring", "section_03_cluster_seed_tracts"))
 
 scored_required <- c(
   "tract_geoid", "eligible_v1", "tract_score", "tract_rank",
@@ -121,12 +122,12 @@ readiness_report <- list(
 
 save_artifact(
   eligible_zone_inputs,
-  "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_zone_input_candidates.rds"
+  resolve_output_path("04_zones", "section_04_zone_input_candidates")
 )
 
 save_artifact(
   readiness_report,
-  "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_input_readiness_report.rds"
+  resolve_output_path("04_zones", "section_04_input_readiness_report")
 )
 
 if (!isTRUE(readiness_report$pass)) {
@@ -150,7 +151,7 @@ if (nrow(zone_candidate_tracts) == 0) {
 
 save_artifact(
   zone_candidate_tracts,
-  "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_zone_candidate_tracts.rds"
+  resolve_output_path("04_zones", "section_04_zone_candidate_tracts")
 )
 
 message(glue::glue("Section 04 build step 2 complete: {nrow(zone_candidate_tracts)} cluster seed tracts selected as zone candidates."))
@@ -229,15 +230,15 @@ component_summary <- zone_components %>%
 
 save_artifact(
   adjacency_edges,
-  "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_adjacency_edges.rds"
+  resolve_output_path("04_zones", "section_04_adjacency_edges")
 )
 save_artifact(
   zone_components,
-  "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_zone_components.rds"
+  resolve_output_path("04_zones", "section_04_zone_components")
 )
 save_artifact(
   component_summary,
-  "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_component_summary.rds"
+  resolve_output_path("04_zones", "section_04_component_summary")
 )
 
 message(glue::glue(
@@ -294,12 +295,12 @@ zones <- zones %>%
 
 save_artifact(
   zones,
-  "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_zones.rds"
+  resolve_output_path("04_zones", "section_04_zones")
 )
 
 save_artifact(
   zone_order,
-  "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_zone_labels.rds"
+  resolve_output_path("04_zones", "section_04_zone_labels")
 )
 
 message(glue::glue(
@@ -357,7 +358,7 @@ zone_summary <- zone_metric_base %>%
 
 save_artifact(
   zone_summary,
-  "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_zone_summary.rds"
+  resolve_output_path("04_zones", "section_04_zone_summary")
 )
 
 message(glue::glue(

@@ -4,6 +4,9 @@ This file defines expected outputs from each section module so `.qmd` integratio
 
 ## General conventions
 - Persist reusable objects as `.rds` under each section's `outputs/` folder.
+- Active Sprint 3 behavior is market-partitioned by default:
+  `sections/<section_id>/outputs/<market_key>/section_<xx>_<artifact>.rds`
+- Readers should use shared artifact resolvers so older legacy root-level outputs can still be read during transition.
 - File naming pattern: `section_<xx>_<artifact_name>.rds`.
 - Include a `generated_at` timestamp column/field where practical.
 - Geospatial outputs should include explicit CRS metadata.
@@ -96,11 +99,13 @@ This file defines expected outputs from each section module so `.qmd` integratio
 
 ### 05_parcels
 - `outputs/section_05_zones_canonical.rds`
-  - Canonicalized dual-system zone geometry table (`zone_system`, `zone_id`, `zone_label`, `geometry`).
+  - Canonicalized zone geometry table used by the active cluster-first Section 05 flow (`zone_system`, `zone_id`, `zone_label`, `geometry`).
 - `outputs/section_05_parcels_canonical.rds`
-  - Canonical parcel table with normalized parcel attributes and geometry.
+  - Canonical parcel table with normalized parcel attributes and geometry derived from the configured parcel standardized root.
 - `outputs/section_05_input_readiness_report.rds`
   - Input schema/key/geometry readiness report for Section 05 prerequisites.
+- `outputs/section_05_retail_land_use_mapping_candidates_v0_1.csv`
+  - Required manual retail use-code mapping file consumed by the retail classification step.
 - `outputs/section_05_retail_classified_parcels.rds`
   - Parcel table with retail classification (`retail_flag`, `retail_subtype`) and area fields.
 - `outputs/section_05_retail_intensity.rds`
@@ -125,10 +130,36 @@ This file defines expected outputs from each section module so `.qmd` integratio
   - Exported contiguity overlay map.
 - `outputs/section_05_overlay_map_cluster.png`
   - Exported cluster overlay map.
+- `outputs/section_05_market_parcel_context_map.png`
+  - Exported parcel market context map for the active cluster-first workflow.
+- `outputs/section_05_cluster_parcel_overlay_map.png`
+  - Exported cluster parcel overlay map used for shortlist framing.
 - `outputs/section_05_shortlist_map_contiguity.png`
   - Exported contiguity shortlist map.
 - `outputs/section_05_shortlist_map_cluster.png`
   - Exported cluster shortlist map.
+
+### Section 05 external input contract
+- `ROF_PARCEL_STANDARDIZED_ROOT` may override the default parcel standardized root used by Section 05.
+- The configured parcel standardized root must contain `parcel_ingest_manifest.rds` when a manifest-driven load is expected.
+- Section 05 will read county analysis geometry artifacts from either:
+  - manifest `analysis_path` entries, or
+  - `county_outputs/<county_tag>/parcel_geometries_analysis.rds`
+- The minimum required parcel geometry columns for Section 05 consumption are:
+  - `join_key`
+  - `parcel_id`
+  - `county`
+  - `county_name`
+  - `use_code`
+  - `land_value`
+  - `total_value`
+  - `sale_price1`
+  - `sale_yr1`
+  - `sale_mo1`
+  - `qa_missing_join_key`
+  - `qa_zero_county`
+  - `geometry`
+- County analysis geometry must be stored in EPSG:4326 for handoff into Section 05.
 
 ### 06_conclusion_appendix
 - `outputs/section_06_conclusion_payload.rds`

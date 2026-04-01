@@ -8,6 +8,20 @@ It replaces and consolidates:
 
 The intended operating model is a single manual ETL script that a user runs in RStudio one county at a time.
 
+## Sprint 3 status note
+
+For Sprint 3, this document should be read as a manual workflow and contract
+document, not an automation roadmap.
+
+The active Sprint 3 requirement is:
+- keep county ETL manual
+- harden the parcel input contract that Section 05 consumes
+- make county outputs, manifests, and QA artifacts explicit enough that
+multi-market ROF runs have dependable parcel inputs
+
+The active Sprint 3 non-goal is:
+- do not build a fully automated county batch ETL framework in this sprint
+
 ## 1. Core Design Decision
 
 The parcel workflow should be treated as one visible ETL flow, not as a set of separately operated scripts with hidden control flow.
@@ -62,6 +76,40 @@ Important operating rule:
 Important state rule:
 - local disk stores county artifacts for inspection
 - DuckDB stores the aggregate cross-county state
+
+## 3A. Section 05 consumption contract
+
+Section 05 does not consume arbitrary parcel folders. It consumes a configured
+parcel standardized root with a predictable county output layout.
+
+Minimum downstream handoff requirements:
+- parcel standardized root exists and is pointed to by shared config or
+  `ROF_PARCEL_STANDARDIZED_ROOT`
+- county analysis artifacts exist at
+  `county_outputs/<county_tag>/parcel_geometries_analysis.rds`
+- county QA artifacts exist and are reviewable before downstream use
+- `parcel_ingest_manifest.rds` exists when manifest-driven analysis paths are
+  expected
+
+Minimum required columns in county analysis artifacts:
+- `join_key`
+- `parcel_id`
+- `county`
+- `county_name`
+- `use_code`
+- `land_value`
+- `total_value`
+- `sale_price1`
+- `sale_yr1`
+- `sale_mo1`
+- `qa_missing_join_key`
+- `qa_zero_county`
+- `geometry`
+
+Geometry requirements for Section 05 handoff:
+- storage CRS must be EPSG:4326
+- empty geometries should not be present
+- invalid geometries may be retained only when surfaced in QA for follow-up
 
 ## 4. Recommended Script Shape
 

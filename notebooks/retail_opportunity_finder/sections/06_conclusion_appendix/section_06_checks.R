@@ -7,12 +7,12 @@ initialize_section_runtime()
 message("Running section 06 checks: 06_conclusion_appendix")
 
 required_paths <- c(
-  "notebooks/retail_opportunity_finder/sections/06_conclusion_appendix/outputs/section_06_conclusion_payload.rds",
-  "notebooks/retail_opportunity_finder/sections/06_conclusion_appendix/outputs/section_06_appendix_payload.rds",
-  "notebooks/retail_opportunity_finder/sections/06_conclusion_appendix/outputs/section_06_visual_objects.rds",
-  "notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_validation_report.rds",
-  "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_validation_report.rds",
-  "notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_validation_report.rds"
+  read_artifact_path("06_conclusion_appendix", "section_06_conclusion_payload"),
+  read_artifact_path("06_conclusion_appendix", "section_06_appendix_payload"),
+  read_artifact_path("06_conclusion_appendix", "section_06_visual_objects"),
+  read_artifact_path("03_eligibility_scoring", "section_03_validation_report"),
+  read_artifact_path("04_zones", "section_04_validation_report"),
+  read_artifact_path("05_parcels", "section_05_validation_report")
 )
 missing_paths <- required_paths[!file.exists(required_paths)]
 if (length(missing_paths) > 0) {
@@ -22,13 +22,13 @@ if (length(missing_paths) > 0) {
   )
 }
 
-conclusion_payload <- readRDS("notebooks/retail_opportunity_finder/sections/06_conclusion_appendix/outputs/section_06_conclusion_payload.rds")
-appendix_payload <- readRDS("notebooks/retail_opportunity_finder/sections/06_conclusion_appendix/outputs/section_06_appendix_payload.rds")
-visual_objects <- readRDS("notebooks/retail_opportunity_finder/sections/06_conclusion_appendix/outputs/section_06_visual_objects.rds")
+conclusion_payload <- readRDS(read_artifact_path("06_conclusion_appendix", "section_06_conclusion_payload"))
+appendix_payload <- readRDS(read_artifact_path("06_conclusion_appendix", "section_06_appendix_payload"))
+visual_objects <- readRDS(read_artifact_path("06_conclusion_appendix", "section_06_visual_objects"))
 
-section_03_report <- readRDS("notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_validation_report.rds")
-section_04_report <- readRDS("notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_validation_report.rds")
-section_05_report <- readRDS("notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_validation_report.rds")
+section_03_report <- readRDS(read_artifact_path("03_eligibility_scoring", "section_03_validation_report"))
+section_04_report <- readRDS(read_artifact_path("04_zones", "section_04_validation_report"))
+section_05_report <- readRDS(read_artifact_path("05_parcels", "section_05_validation_report"))
 
 or_else <- function(x, fallback) if (is.null(x)) fallback else x
 
@@ -106,7 +106,7 @@ validation_report <- list(
 
 save_artifact(
   validation_report,
-  "notebooks/retail_opportunity_finder/sections/06_conclusion_appendix/outputs/section_06_validation_report.rds"
+  resolve_output_path("06_conclusion_appendix", "section_06_validation_report")
 )
 
 if (!isTRUE(validation_report$pass)) {

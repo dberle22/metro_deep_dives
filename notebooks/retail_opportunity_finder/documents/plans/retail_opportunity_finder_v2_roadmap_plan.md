@@ -106,6 +106,11 @@ This roadmap translates the current ROF MVP into a scalable multi-market, multi-
 - Preserve market-specific artifacts instead of overwriting prior runs.
 - Begin standing up parcel data infrastructure so county files can be ingested into a structured platform.
 
+### Current Status Note
+- Sprint 3 is partially implemented in practice even though the checklist below has not yet been reconciled.
+- Completed in practice: market-partitioned outputs for Sections 01-03, shared market/output helpers, a working multi-market runner through Section 03, and the tract geometry adapter for `FL`, `GA`, `SC`, and `NC`.
+- Remaining closeout focus: extend market-aware execution through Sections 04-06, complete a full current-pipeline Florida multi-market pilot, harden the manual parcel input requirements for Section 05, and update docs to reflect the implemented state.
+
 ### Scope
 - Add orchestrator script for market batch runs.
 - Parameterize output paths by market and run timestamp.
@@ -127,13 +132,14 @@ This roadmap translates the current ROF MVP into a scalable multi-market, multi-
 - Output files for different markets can be inspected independently after the run.
 
 ### Task Checklist
-- [ ] `S3-T1` Build batch orchestrator for multi-market runs. Owner: `ENG-Analytics`. Depends on: `S2-T7`.
-- [ ] `S3-T2` Add output partitioning by market + run id/timestamp. Owner: `ENG-Data`. Depends on: `S3-T1`.
-- [ ] `S3-T3` Implement geometry-source adapter to reduce state-table hardcoding. Owner: `ENG-Spatial`. Depends on: `S2-T7`.
-- [ ] `S3-T4` Design parcel ETL/database foundation for county CSV/SHP storage and normalized ingest. Owner: `ENG-Data`. Depends on: `S2-T7`.
-- [ ] `S3-T5` Configure and run Jacksonville + one additional Florida CBSA with isolated outputs. Owner: `ENG-Analytics`. Depends on: `S3-T1`, `S3-T2`, `S3-T3`.
-- [ ] `S3-T6` Produce pilot run manifest (runtime, pass/fail, artifact paths, per-market output locations). Owner: `ENG-QA`. Depends on: `S3-T5`.
-- [ ] `S3-T7` Approve Florida pilot checkpoint for release gate. Owner: `PM`. Depends on: `S3-T4`, `S3-T6`.
+- [x] `S3-T1` Build initial batch orchestrator for multi-market runs through Sections 01-03. Owner: `ENG-Analytics`. Depends on: `S2-T7`.
+- [x] `S3-T2` Add market-partitioned outputs for active Sprint 3 baseline sections (01-03). Owner: `ENG-Data`. Depends on: `S3-T1`.
+- [x] `S3-T3` Implement geometry-source adapter to reduce state-table hardcoding. Owner: `ENG-Spatial`. Depends on: `S2-T7`.
+- [ ] `S3-T4` Extend market-aware reads/writes and output partitioning through Sections 04-06. Owner: `ENG-Analytics`. Depends on: `S3-T2`, `S3-T3`.
+- [ ] `S3-T5` Expand the batch runner to the full current pipeline and execute Jacksonville + one additional Florida CBSA with isolated outputs. Owner: `ENG-Analytics`. Depends on: `S3-T4`.
+- [ ] `S3-T6` Harden the manual parcel input requirements and Section 05 parcel consumption contract. Owner: `ENG-Data`. Depends on: `S2-T7`.
+- [ ] `S3-T7` Produce a full-pipeline Florida pilot manifest and closeout summary (runtime, pass/fail, artifact paths, per-market output locations, key limitations). Owner: `ENG-QA`. Depends on: `S3-T5`, `S3-T6`.
+- [ ] `S3-T8` Approve Florida pilot checkpoint for release gate. Owner: `PM`. Depends on: `S3-T7`.
 
 ## Sprint 4 - Ranking Engine Modularization and Versioning (Initiative C)
 ### Objectives

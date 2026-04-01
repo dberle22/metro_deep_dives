@@ -46,12 +46,18 @@ resolve_project_root <- function() {
 }
 
 project_root <- resolve_project_root()
+source(file.path(project_root, "notebooks/retail_opportunity_finder/sections/_shared/bootstrap.R"))
+initialize_section_runtime()
 
 resolve_artifact_path <- function(path) {
   if (file.exists(path)) return(path)
   rooted <- file.path(project_root, path)
   if (file.exists(rooted)) return(rooted)
   path
+}
+
+resolve_section_artifact <- function(section_id, artifact_name, subdir = NULL, ext = "rds") {
+  read_artifact_path(section_id, artifact_name, key = ACTIVE_MARKET_KEY, subdir = subdir, ext = ext)
 }
 
 read_artifact <- function(path, label) {
@@ -64,31 +70,31 @@ read_artifact <- function(path, label) {
 
 artifact_manifest <- tribble(
   ~alias, ~path,
-  "section01_run_metadata", "notebooks/retail_opportunity_finder/sections/01_setup/outputs/section_01_run_metadata.rds",
-  "section01_foundation", "notebooks/retail_opportunity_finder/sections/01_setup/outputs/section_01_foundation.rds",
+  "section01_run_metadata", resolve_section_artifact("01_setup", "section_01_run_metadata"),
+  "section01_foundation", resolve_section_artifact("01_setup", "section_01_foundation"),
 
-  "section02_visual_objects", "notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_visual_objects.rds",
-  "section02_validation_report", "notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_validation_report.rds",
+  "section02_visual_objects", resolve_section_artifact("02_market_overview", "section_02_visual_objects"),
+  "section02_validation_report", resolve_section_artifact("02_market_overview", "section_02_validation_report"),
 
-  "section03_funnel_counts", "notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_funnel_counts.rds",
-  "section03_scored_tracts", "notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_scored_tracts.rds",
-  "section03_top_tracts", "notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_top_tracts.rds",
-  "section03_visual_objects", "notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_visual_objects.rds",
-  "section03_validation_report", "notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_validation_report.rds",
+  "section03_funnel_counts", resolve_section_artifact("03_eligibility_scoring", "section_03_funnel_counts"),
+  "section03_scored_tracts", resolve_section_artifact("03_eligibility_scoring", "section_03_scored_tracts"),
+  "section03_top_tracts", resolve_section_artifact("03_eligibility_scoring", "section_03_top_tracts"),
+  "section03_visual_objects", resolve_section_artifact("03_eligibility_scoring", "section_03_visual_objects"),
+  "section03_validation_report", resolve_section_artifact("03_eligibility_scoring", "section_03_validation_report"),
 
-  "section04_cluster_zone_summary", "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_cluster_zone_summary.rds",
-  "section04_cluster_visual_objects", "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_cluster_visual_objects.rds",
-  "section04_cluster_validation_report", "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_cluster_validation_report.rds",
+  "section04_cluster_zone_summary", resolve_section_artifact("04_zones", "section_04_cluster_zone_summary"),
+  "section04_cluster_visual_objects", resolve_section_artifact("04_zones", "section_04_cluster_visual_objects"),
+  "section04_cluster_validation_report", resolve_section_artifact("04_zones", "section_04_cluster_validation_report"),
 
-  "section05_zone_overlay_cluster", "notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_zone_overlay_cluster.rds",
-  "section05_parcel_shortlist_cluster", "notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_parcel_shortlist_cluster.rds",
-  "section05_visual_objects", "notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_visual_objects.rds",
-  "section05_validation_report", "notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_validation_report.rds",
+  "section05_zone_overlay_cluster", resolve_section_artifact("05_parcels", "section_05_zone_overlay_cluster"),
+  "section05_parcel_shortlist_cluster", resolve_section_artifact("05_parcels", "section_05_parcel_shortlist_cluster"),
+  "section05_visual_objects", resolve_section_artifact("05_parcels", "section_05_visual_objects"),
+  "section05_validation_report", resolve_section_artifact("05_parcels", "section_05_validation_report"),
 
-  "section06_conclusion_payload", "notebooks/retail_opportunity_finder/sections/06_conclusion_appendix/outputs/section_06_conclusion_payload.rds",
-  "section06_appendix_payload", "notebooks/retail_opportunity_finder/sections/06_conclusion_appendix/outputs/section_06_appendix_payload.rds",
-  "section06_visual_objects", "notebooks/retail_opportunity_finder/sections/06_conclusion_appendix/outputs/section_06_visual_objects.rds",
-  "section06_validation_report", "notebooks/retail_opportunity_finder/sections/06_conclusion_appendix/outputs/section_06_validation_report.rds"
+  "section06_conclusion_payload", resolve_section_artifact("06_conclusion_appendix", "section_06_conclusion_payload"),
+  "section06_appendix_payload", resolve_section_artifact("06_conclusion_appendix", "section_06_appendix_payload"),
+  "section06_visual_objects", resolve_section_artifact("06_conclusion_appendix", "section_06_visual_objects"),
+  "section06_validation_report", resolve_section_artifact("06_conclusion_appendix", "section_06_validation_report")
 )
 
 artifacts <- lapply(seq_len(nrow(artifact_manifest)), function(i) {
@@ -465,7 +471,7 @@ How zones are built:
 Cluster summary for current run:
 
 - Cluster zones: `r nrow(artifacts$section04_cluster_zone_summary)`
-- Cluster seed tracts: `r nrow(readRDS(resolve_artifact_path("notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_zone_input_candidates.rds")))`
+- Cluster seed tracts: `r nrow(readRDS(resolve_section_artifact("04_zones", "section_04_zone_input_candidates")))`
 
 ```{r}
 #| label: s04-caveat-note

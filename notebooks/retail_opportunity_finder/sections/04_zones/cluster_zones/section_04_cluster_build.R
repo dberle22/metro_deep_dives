@@ -6,7 +6,7 @@ initialize_section_runtime()
 
 message("Running section 04 cluster build")
 
-zone_inputs <- readRDS("notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_zone_input_candidates.rds")
+zone_inputs <- readRDS(read_artifact_path("04_zones", "section_04_zone_input_candidates"))
 
 cluster_params <- list(
   method = "distance_connected_components",
@@ -222,19 +222,19 @@ cluster_zone_summary <- zone_inputs %>%
 
 save_artifact(
   cluster_assignments,
-  "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_cluster_assignments.rds"
+  resolve_output_path("04_zones", "section_04_cluster_assignments")
 )
 save_artifact(
   cluster_zones,
-  "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_cluster_zones.rds"
+  resolve_output_path("04_zones", "section_04_cluster_zones")
 )
 save_artifact(
   cluster_zone_summary,
-  "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_cluster_zone_summary.rds"
+  resolve_output_path("04_zones", "section_04_cluster_zone_summary")
 )
 save_artifact(
   cluster_params,
-  "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_cluster_params.rds"
+  resolve_output_path("04_zones", "section_04_cluster_params")
 )
 
 message(glue::glue(

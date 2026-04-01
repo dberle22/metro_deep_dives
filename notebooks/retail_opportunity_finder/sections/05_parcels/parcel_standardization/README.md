@@ -6,6 +6,14 @@ This folder now centers on one manual county ETL:
 
 That script is the working parcel standardization path for Section 05.
 
+## Sprint 3 Scope
+
+Sprint 3 keeps parcel ETL manual.
+
+The goal for this folder is not to automate county ingestion. The goal is to
+make the manual county workflow explicit enough that downstream Section 05 runs
+have a stable, reviewable input contract.
+
 ## Current Workflow
 
 The current workflow is intentionally manual and county-first:
@@ -20,6 +28,53 @@ The current workflow is intentionally manual and county-first:
 
 This keeps the expensive spatial data out of DuckDB and stores county geometry
 as lightweight R artifacts instead.
+
+## Section 05 Downstream Contract
+
+Section 05 consumes a configured parcel standardized root. By default this is
+controlled by shared config, and it can be overridden with
+`ROF_PARCEL_STANDARDIZED_ROOT`.
+
+Section 05 currently expects:
+
+1. A parcel standardized root directory that exists.
+2. A `parcel_ingest_manifest.rds` file when manifest-driven paths are being
+used.
+3. County analysis geometry artifacts at:
+   `county_outputs/<county_tag>/parcel_geometries_analysis.rds`
+4. County-level QA artifacts that make join quality reviewable before Section 05
+consumption.
+
+The minimum required columns in each county analysis geometry artifact are:
+
+- `join_key`
+- `parcel_id`
+- `county`
+- `county_name`
+- `use_code`
+- `land_value`
+- `total_value`
+- `sale_price1`
+- `sale_yr1`
+- `sale_mo1`
+- `qa_missing_join_key`
+- `qa_zero_county`
+- `geometry`
+
+Geometry requirements:
+
+- storage CRS must be EPSG:4326
+- empty geometries should not be present in the analysis artifact
+- invalid geometries may still appear, but they should be visible in county QA
+and treated as review items before downstream export or map publication
+
+Manifest expectations:
+
+- `parcel_ingest_manifest.rds` should identify county-level analysis artifacts
+through an `analysis_path` field when available
+- manifest rows should be county-grain, not mixed multi-county summaries
+- county tags should be stable across reruns so manual refreshes replace the
+intended county artifacts
 
 ## Active Files
 
@@ -38,12 +93,16 @@ DuckDB:
 
 Geometry on disk:
 
-- `/Users/danberle/Documents/projects/data/property_taxes/parcel_geom/<state>/<county_tag>_geom.rds`
+- preferred Sprint 3 Section 05 handoff:
+  `<parcel_standardized_root>/county_outputs/<county_tag>/parcel_geometries_analysis.rds`
+- older county geometry artifacts may still exist outside the standardized root,
+  but they are no longer the preferred Section 05 contract
 
 QA on disk:
 
-- `/Users/danberle/Documents/projects/data/property_taxes/parcel_geom/<state>/qa/<county_tag>_join_qa.rds`
-- `/Users/danberle/Documents/projects/data/property_taxes/parcel_geom/<state>/qa/<county_tag>_join_qa_unmatched.csv`
+- preferred Sprint 3 county QA handoff:
+  `<parcel_standardized_root>/county_outputs/<county_tag>/parcel_geometry_join_qa.rds`
+- optional unmatched review extracts may also be stored beside county QA outputs
 
 ## Notes
 
@@ -51,3 +110,5 @@ QA on disk:
 - County geometry is stored for spatial analysis and plotting, not in DuckDB.
 - If a county has problematic geometry, use `repair_invalid_geom <- TRUE` in
   `parcel_etl_manual_county_v2.R` only when needed.
+- Before running Section 05, confirm the parcel standardized root, manifest, and
+county analysis artifacts are aligned for the target manual refresh set.

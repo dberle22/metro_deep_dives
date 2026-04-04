@@ -3,6 +3,7 @@
 
 source("notebooks/retail_opportunity_finder/sections/_shared/bootstrap.R")
 initialize_section_runtime()
+source("notebooks/retail_opportunity_finder/sections/02_market_overview/section_02_inputs.R")
 
 message("Running section 02 build: 02_market_overview")
 
@@ -27,9 +28,8 @@ benchmark_region_value <- market_profile$benchmark_region_value
 benchmark_region_label <- market_profile$benchmark_region_label
 us_label <- market_label("us_label", market_profile)
 
-cbsa_features_sql <- resolve_sql_path("cbsa_features")
-cbsa_features <- query_df_sql_file(con, cbsa_features_sql)
-
+section_inputs <- load_section_02_inputs(con, market_profile)
+cbsa_features <- section_inputs$cbsa_features
 assert_required_columns(cbsa_features, REQUIRED_COLUMNS$cbsa_features, "cbsa_features")
 
 format_kpi_value <- function(x, type = c("num", "pct", "usd", "units", "mins")) {
@@ -305,14 +305,11 @@ save_artifact(
 )
 
 # Market context map artifact: tract geometries for target CBSA with growth signal.
-tract_features_sql <- resolve_sql_path("tract_features")
-tract_features <- query_df_sql_file(con, tract_features_sql) %>%
+tract_features <- section_inputs$tract_features %>%
   filter(as.character(cbsa_code) == as.character(target_cbsa_code)) %>%
   select(tract_geoid, cbsa_code, county_geoid, pop_growth_3yr, pop_growth_5yr, pop_density, median_gross_rent, median_home_value)
 
-tract_wkb <- query_tract_geometry_wkb(con, profile = market_profile, cbsa_code = target_cbsa_code)
-market_tract_sf <- sf_from_wkb_df(tract_wkb, c("tract_geoid")) %>%
-  left_join(tract_features, by = "tract_geoid")
+market_tract_sf <- section_inputs$market_tract_sf
 
 save_artifact(
   market_tract_sf,
@@ -320,8 +317,7 @@ save_artifact(
 )
 
 # County context map artifact: county geometries within target CBSA.
-county_wkb <- query_county_geometry_wkb(con, profile = market_profile, cbsa_code = target_cbsa_code)
-market_county_sf <- sf_from_wkb_df(county_wkb, c("county_geoid", "county_name"))
+market_county_sf <- section_inputs$market_county_sf
 
 save_artifact(
   market_county_sf,

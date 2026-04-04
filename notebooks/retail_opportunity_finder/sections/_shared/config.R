@@ -35,6 +35,8 @@ MODEL_PARAMS <- list(
 
 # Output root for section artifacts
 SECTION_OUTPUT_ROOT <- "notebooks/retail_opportunity_finder/sections"
+DATA_PLATFORM_ROOT <- "notebooks/retail_opportunity_finder/data_platform"
+NOTEBOOK_BUILD_ROOT <- "notebooks/retail_opportunity_finder/notebook_build"
 
 # Parcel foundation inputs for Section 05.
 PARCEL_STANDARDIZATION_ROOT_DEFAULT <- file.path(

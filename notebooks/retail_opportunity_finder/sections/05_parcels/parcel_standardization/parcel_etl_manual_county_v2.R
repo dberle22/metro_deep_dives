@@ -28,6 +28,13 @@ clean_names_simple <- function(x) {
     stringr::str_to_lower()
 }
 
+derive_county_fips_from_geoid <- function(x) {
+  x %>%
+    as.character() %>%
+    stringr::str_trim() %>%
+    stringr::str_extract("[0-9]{3}$")
+}
+
 coalesce_first_existing <- function(df, candidates) {
   found <- intersect(candidates, names(df))
   if (length(found) == 0) {
@@ -51,22 +58,12 @@ coalesce_first_existing <- function(df, candidates) {
 # Sections 4-6 can be rerun after tabular_clean exists in memory.
 # Section 7 should be run only after Section 6 looks correct.
 
-# Example manual fill-in:
-# state <- "FL"
-# county_name <- "Alachua County"
-# county_tag <- "alachua_fl"
-# tabular_path <- "/absolute/path/to/parcel_tabular.csv"
-# geom_path <- "/absolute/path/to/parcel_geom.shp"
-# duckdb_path <- "~/projects/data/duckdb/metro_deep_dive.duckdb"
-# parcel_geom_root <- "~/projects/data/property_taxes/parcel_geom"
-# parcel_duckdb_schema <- "rof_parcel"
-# repair_invalid_geom <- FALSE
-
 state <- "FL"
-county_name <- ""
-county_tag <- ""
-tabular_path <- ""
-geom_path <- ""
+county_name <- "St. Johns County"
+county_tag <- "stjohns_fl"
+county_geoid <- "12109"
+tabular_path <- "~/projects/data/property_taxes/fl/data/tabular/NALSTJOHN65F202502.csv"
+geom_path <- "~/projects/data/property_taxes/fl/data/stjohns_2025par/stjohns_2025par.shp"
 duckdb_path <- "~/projects/data/duckdb/metro_deep_dive.duckdb"
 parcel_geom_root <- "~/projects/data/property_taxes/parcel_geom"
 parcel_duckdb_schema <- "rof_parcel"
@@ -105,11 +102,13 @@ tabular_clean <- tabular_raw %>%
     state = state,
     county_name = county_name,
     county_tag = county_tag,
+    county_geoid = county_geoid,
+    census_block_id = coalesce_first_existing(., c("census_bk", "census_block_id", "block_geoid", "blockid")),
     source_file = basename(tabular_path),
     parcel_id = coalesce_first_existing(., c("parcel_id", "parcelid", "parid")),
     alt_key = coalesce_first_existing(., c("alt_key", "altkey", "alternate_id")),
     county_code = coalesce_first_existing(., c("co_no", "county", "county_code")),
-    county_fips = coalesce_first_existing(., c("county_fips", "cnty_fips")),
+    county_fips = derive_county_fips_from_geoid(county_geoid),
     use_code = coalesce_first_existing(., c("dor_uc", "pa_uc", "use_code")),
     owner_name = coalesce_first_existing(., c("own_name", "owner_name")),
     owner_addr = coalesce_first_existing(., c("own_addr1", "owner_addr")),
@@ -127,6 +126,7 @@ tabular_clean <- tabular_raw %>%
     join_key = normalize_join_key(join_key),
     parcel_id = normalize_join_key(parcel_id),
     alt_key = normalize_join_key(alt_key),
+    census_block_id = dplyr::na_if(stringr::str_trim(as.character(census_block_id)), ""),
     county_code = stringr::str_trim(as.character(county_code)),
     county_fips = stringr::str_trim(as.character(county_fips)),
     use_code = stringr::str_trim(as.character(use_code)),
@@ -212,15 +212,20 @@ geom_trimmed <- geom_raw %>%
     state = state,
     county_name = county_name,
     county_tag = county_tag,
+    county_geoid = county_geoid,
     source_shp = basename(geom_path),
     parcel_id = coalesce_first_existing(., c("parcel_id", "parcelid", "parid")),
     alt_key = coalesce_first_existing(., c("alt_key", "altkey", "alternate_id")),
     county_code = coalesce_first_existing(., c("co_no", "county", "county_code")),
-    county_fips = coalesce_first_existing(., c("county_fips", "cnty_fips")),
+    county_fips = derive_county_fips_from_geoid(county_geoid),
     join_key = dplyr::coalesce(parcel_id, alt_key),
     join_key = normalize_join_key(join_key),
     parcel_id = normalize_join_key(parcel_id),
     alt_key = normalize_join_key(alt_key),
+    county_code = dplyr::coalesce(
+      dplyr::na_if(stringr::str_trim(as.character(county_geoid)), ""),
+      stringr::str_trim(as.character(county_code))
+    ),
     county_code = stringr::str_trim(as.character(county_code)),
     county_fips = stringr::str_trim(as.character(county_fips)),
     geometry = geometry

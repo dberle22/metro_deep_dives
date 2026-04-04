@@ -101,17 +101,17 @@ This file defines expected outputs from each section module so `.qmd` integratio
 - `outputs/section_05_zones_canonical.rds`
   - Canonicalized zone geometry table used by the active cluster-first Section 05 flow (`zone_system`, `zone_id`, `zone_label`, `geometry`).
 - `outputs/section_05_parcels_canonical.rds`
-  - Canonical parcel table with normalized parcel attributes and geometry derived from the configured parcel standardized root.
+  - Canonical parcel table with normalized parcel attributes sourced from prepared parcel-serving products; geometry is attached later only for geometry-bearing outputs.
 - `outputs/section_05_input_readiness_report.rds`
   - Input schema/key/geometry readiness report for Section 05 prerequisites.
 - `outputs/section_05_retail_land_use_mapping_candidates_v0_1.csv`
   - Required manual retail use-code mapping file consumed by the retail classification step.
 - `outputs/section_05_retail_classified_parcels.rds`
-  - Parcel table with retail classification (`retail_flag`, `retail_subtype`) and area fields.
+  - Geometry-bearing parcel table with retail classification (`retail_flag`, `retail_subtype`) and area fields for map-serving outputs.
 - `outputs/section_05_retail_intensity.rds`
   - Tract-level retail intensity metrics (`retail_parcel_count`, `retail_area`, `retail_area_density`).
 - `outputs/section_05_retail_intensity_report.rds`
-  - Validation summary for retail classification and tract-assignment workflow.
+  - Validation summary for retail classification and tract-assignment workflow, including consumer-vs-fallback source modes.
 - `outputs/section_05_zone_overlay_contiguity.rds`
   - Contiguity-zone overlay summary with retail context and zone quality fields.
 - `outputs/section_05_zone_overlay_cluster.rds`

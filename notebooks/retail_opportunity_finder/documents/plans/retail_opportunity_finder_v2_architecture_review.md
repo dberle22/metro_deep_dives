@@ -49,8 +49,8 @@ Move ROF V2 toward a layered system with clear boundaries:
 Publish the tract- and metro-level feature tables that support market overview, tract scoring, and downstream market prep.
 
 ### Current build
-- Section 02 reads `cbsa_features.sql` from DuckDB and constructs market overview artifacts in [section_02_build.R].
-- Section 03 reads `tract_features.sql` from DuckDB and computes funnel, scoring, top tracts, and cluster seed tracts in [section_03_build.R].
+- Section 02 constructs market overview artifacts in [section_02_build.R] from prepared foundation inputs, with DuckDB as the intended serving boundary.
+- Section 03 computes funnel, scoring, top tracts, and cluster seed tracts in [section_03_build.R] from prepared tract feature inputs, with DuckDB as the intended serving boundary.
 
 ### Current outputs
 - Metro KPI tables and context geometries

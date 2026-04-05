@@ -24,8 +24,9 @@ This is the first-pass lineage map for the ROF V2 transition.
 
 ## Foundation Layer
 - `foundation.cbsa_features`
-  - source: existing `sql/features/cbsa_features.sql`
-  - current downstream consumer: Section 02
+  - source: `data_platform/layers/01_foundation_features/tables/cbsa_features/build.sql`
+  - serving boundary: published as `foundation.cbsa_features` in DuckDB
+  - current downstream consumer: Section 02 via foundation-table reads when available
 - `foundation.tract_features`
   - source: existing `sql/features/tract_features.sql`
   - current downstream consumers: Section 02, Section 03, tract scoring workflow

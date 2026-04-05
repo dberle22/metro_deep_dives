@@ -22,7 +22,7 @@ See also:
 
 | Table | Grain | Direct parents | Notes |
 | --- | --- | --- | --- |
-| `foundation.cbsa_features` | `cbsa_code`, `year` | `sql/features/cbsa_features.sql` inputs | Existing query path; upstream publication still pending. |
+| `foundation.cbsa_features` | `cbsa_code`, `year` | `data_platform/layers/01_foundation_features/tables/cbsa_features/build.sql` inputs | Implemented upstream publication in the foundation layer. The build file is an upstream asset; downstream should consume the published DuckDB table. |
 | `foundation.tract_features` | `market_key`, `tract_geoid`, `year` | `sql/features/tract_features.sql` rendered for active market/year | Implemented first-pass upstream publication. |
 | `foundation.market_tract_geometry` | `market_key`, `tract_geoid` | market profile, DuckDB tract geometry sources | Implemented first-pass geometry-serving table with `geom_wkt`. |
 | `foundation.market_county_geometry` | `market_key`, `county_geoid` | market profile, DuckDB county geometry sources | Implemented first-pass geometry-serving table with `geom_wkt`. |

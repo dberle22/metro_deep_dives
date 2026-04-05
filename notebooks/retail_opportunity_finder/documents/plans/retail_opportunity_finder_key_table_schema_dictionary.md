@@ -2,8 +2,8 @@
 
 ## Purpose
 This document is the column-level schema dictionary for the highest-value ROF V2 tables. It complements:
-- [retail_opportunity_finder_layer_product_dictionary.md](/Users/danberle/Documents/projects/metro_deep_dive/notebooks/retail_opportunity_finder/documents/plans/retail_opportunity_finder_layer_product_dictionary.md)
-- [retail_opportunity_finder_v2_architecture_review.md](/Users/danberle/Documents/projects/metro_deep_dive/notebooks/retail_opportunity_finder/documents/plans/retail_opportunity_finder_v2_architecture_review.md)
+- [retail_opportunity_finder_layer_product_dictionary.md]
+- [retail_opportunity_finder_v2_architecture_review.md]
 
 The goal here is to explain what the important columns mean and how they are used in the ROF pipeline.
 
@@ -970,7 +970,7 @@ This appendix classifies fields by where they come from and what kind of transfo
 | Columns | Provenance class | Notes |
 | --- | --- | --- |
 | `cbsa_code`, `cbsa_name`, `cbsa_type`, `primary_state_abbr`, `land_area_sq_mi`, `state_fips`, `census_region`, `census_division`, `year`, `pop_total`, `pop_growth_3yr`, `pop_growth_5yr`, `median_gross_rent`, `median_home_value`, `pct_commute_wfh`, `mean_travel_time`, `bps_total_units`, `bps_units_3yr_avg` | `raw_source` | Sourced from CBSA geometry, demographic, housing, transport, and BPS inputs via SQL. |
-| `commute_intensity_b`, `bps_units_per_1k`, `bps_units_per_1k_3yr_avg`, all national/regional rank and percentile fields | `derived_analytic` | Computed in `cbsa_features.sql` for benchmarking and notebook context. |
+| `commute_intensity_b`, `bps_units_per_1k`, `bps_units_per_1k_3yr_avg`, all national/regional rank and percentile fields | `derived_analytic` | Computed in `data_platform/layers/01_foundation_features/tables/cbsa_features/build.sql` for benchmarking and notebook context. |
 | `market_key`, `state_scope` | `reference_enriched` | Added at publish time from market profile metadata. |
 | `build_source`, `run_timestamp` | `qa_lineage_metadata` | Publication metadata. |
 

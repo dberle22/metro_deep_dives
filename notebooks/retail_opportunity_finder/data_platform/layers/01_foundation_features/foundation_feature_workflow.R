@@ -22,6 +22,21 @@ read_sql_template <- function(path) {
   paste(readLines(path, warn = FALSE), collapse = "\n")
 }
 
+FOUNDATION_FEATURE_LAYER_ROOT <- "notebooks/retail_opportunity_finder/data_platform/layers/01_foundation_features"
+FOUNDATION_FEATURE_TABLE_ROOT <- file.path(FOUNDATION_FEATURE_LAYER_ROOT, "tables")
+
+resolve_foundation_table_asset <- function(table_name, asset_name) {
+  path <- file.path(FOUNDATION_FEATURE_TABLE_ROOT, table_name, asset_name)
+  if (!file.exists(path)) {
+    stop(sprintf("Foundation layer table asset not found: %s", path), call. = FALSE)
+  }
+  path
+}
+
+query_cbsa_features_for_layer <- function(con, sql_path = resolve_foundation_table_asset("cbsa_features", "build.sql")) {
+  query_df_sql_file(con, sql_path)
+}
+
 render_tract_features_sql <- function(sql_path, cbsa_code = TARGET_CBSA, target_year = TARGET_YEAR) {
   sql <- read_sql_template(sql_path)
   sql <- stringr::str_replace_all(sql, "27260", cbsa_code)
@@ -50,7 +65,7 @@ read_optional_market_context_sf <- function(artifact_name, market_key = ACTIVE_M
 }
 
 build_foundation_products <- function(con, profile = get_market_profile()) {
-  cbsa_features <- query_df_sql_file(con, resolve_sql_path("cbsa_features"))
+  cbsa_features <- query_cbsa_features_for_layer(con)
   assert_required_columns(cbsa_features, REQUIRED_COLUMNS$cbsa_features, "cbsa_features")
 
   tract_features <- query_tract_features_for_market(con, cbsa_code = profile$cbsa_code, target_year = TARGET_YEAR)
@@ -73,7 +88,11 @@ build_foundation_products <- function(con, profile = get_market_profile()) {
 
   list(
     profile = profile,
-    cbsa_features = prepend_market_metadata(cbsa_features, profile = profile, build_source = "sql/features/cbsa_features.sql"),
+    cbsa_features = prepend_market_metadata(
+      cbsa_features,
+      profile = profile,
+      build_source = "data_platform/layers/01_foundation_features/tables/cbsa_features/build.sql"
+    ),
     tract_features = prepend_market_metadata(tract_features, profile = profile, build_source = "sql/features/tract_features.sql"),
     market_tract_geometry = prepend_market_metadata(
       sf_to_geometry_wkt_table(market_tract_geometry),

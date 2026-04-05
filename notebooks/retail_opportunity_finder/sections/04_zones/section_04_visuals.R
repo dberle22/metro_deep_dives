@@ -6,9 +6,9 @@ initialize_section_runtime()
 
 message("Running section 04 visuals: 04_zones")
 
-zones <- readRDS("notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_zones.rds")
-zone_summary <- readRDS("notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_zone_summary.rds")
-eligible_inputs <- readRDS("notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_zone_input_candidates.rds")
+zones <- readRDS(read_artifact_path("04_zones", "section_04_zones"))
+zone_summary <- readRDS(read_artifact_path("04_zones", "section_04_zone_summary"))
+eligible_inputs <- readRDS(read_artifact_path("04_zones", "section_04_zone_input_candidates"))
 
 # Step 6: zone visuals
 zone_map_plot <- ggplot() +
@@ -33,7 +33,7 @@ zone_summary_gt <- zone_summary %>%
     zone_label,
     tracts,
     total_population,
-    pop_growth_5yr_wtd,
+    pop_growth_3yr_wtd,
     pop_density_median,
     units_per_1k_3yr_wtd,
     price_proxy_pctl_median,
@@ -47,7 +47,7 @@ zone_summary_gt <- zone_summary %>%
     zone_label = "Zone",
     tracts = "Tracts",
     total_population = "Population",
-    pop_growth_5yr_wtd = "Pop growth (5y, wtd)",
+    pop_growth_3yr_wtd = "Pop growth (3y, wtd)",
     pop_density_median = "Median density",
     units_per_1k_3yr_wtd = "Units per 1k (wtd)",
     price_proxy_pctl_median = "Price proxy pctl",
@@ -55,7 +55,7 @@ zone_summary_gt <- zone_summary %>%
     zone_area_sq_mi = "Area (sq mi)"
   ) %>%
   gt::fmt_number(columns = c(tracts, total_population), decimals = 0) %>%
-  gt::fmt_percent(columns = c(pop_growth_5yr_wtd, price_proxy_pctl_median), decimals = 1) %>%
+  gt::fmt_percent(columns = c(pop_growth_3yr_wtd, price_proxy_pctl_median), decimals = 1) %>%
   gt::fmt_number(columns = c(pop_density_median, units_per_1k_3yr_wtd, mean_tract_score), decimals = 2) %>%
   gt::fmt_number(columns = zone_area_sq_mi, decimals = 1)
 
@@ -64,11 +64,11 @@ save_artifact(
     zone_map_plot = zone_map_plot,
     zone_summary_gt = zone_summary_gt
   ),
-  "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_visual_objects.rds"
+  resolve_output_path("04_zones", "section_04_visual_objects")
 )
 
 ggplot2::ggsave(
-  filename = "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_zone_map.png",
+  filename = resolve_output_path("04_zones", "section_04_zone_map", ext = "png"),
   plot = zone_map_plot,
   width = 9,
   height = 7,

@@ -6,18 +6,18 @@ initialize_section_runtime()
 
 message("Running section 05 checks: 05_parcels")
 
-parcels_canonical <- readRDS("notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_parcels_canonical.rds")
-retail_classified_parcels <- readRDS("notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_retail_classified_parcels.rds")
-retail_intensity <- readRDS("notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_retail_intensity.rds")
-zone_overlay_cluster <- readRDS("notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_zone_overlay_cluster.rds")
-parcel_shortlist_cluster <- readRDS("notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_parcel_shortlist_cluster.rds")
-retail_intensity_report <- readRDS("notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_retail_intensity_report.rds")
-shortlist_report <- readRDS("notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_shortlist_report.rds")
+parcels_canonical <- readRDS(read_artifact_path("05_parcels", "section_05_parcels_canonical"))
+retail_classified_parcels <- readRDS(read_artifact_path("05_parcels", "section_05_retail_classified_parcels"))
+retail_intensity <- readRDS(read_artifact_path("05_parcels", "section_05_retail_intensity"))
+zone_overlay_cluster <- readRDS(read_artifact_path("05_parcels", "section_05_zone_overlay_cluster"))
+parcel_shortlist_cluster <- readRDS(read_artifact_path("05_parcels", "section_05_parcel_shortlist_cluster"))
+retail_intensity_report <- readRDS(read_artifact_path("05_parcels", "section_05_retail_intensity_report"))
+shortlist_report <- readRDS(read_artifact_path("05_parcels", "section_05_shortlist_report"))
 
 schema_checks <- list(
   parcels_canonical = validate_columns(
-    sf::st_drop_geometry(parcels_canonical),
-    c("parcel_uid", "join_key", "county", "land_use_code", "just_value", "assessed_value"),
+    parcels_canonical,
+    c("parcel_uid", "join_key", "county", "land_use_code", "assessed_value", "source_mode"),
     "section_05_parcels_canonical"
   ),
   retail_classified_parcels = validate_columns(
@@ -50,7 +50,7 @@ schema_checks <- list(
 )
 
 key_checks <- list(
-  parcels_canonical = validate_unique_key(sf::st_drop_geometry(parcels_canonical), "parcel_uid", "section_05_parcels_canonical"),
+  parcels_canonical = validate_unique_key(parcels_canonical, "parcel_uid", "section_05_parcels_canonical"),
   retail_classified_parcels = validate_unique_key(sf::st_drop_geometry(retail_classified_parcels), "parcel_uid", "section_05_retail_classified_parcels"),
   retail_intensity = validate_unique_key(retail_intensity, "tract_geoid", "section_05_retail_intensity"),
   zone_overlay_cluster = validate_unique_key(zone_overlay_cluster, "zone_id", "section_05_zone_overlay_cluster"),
@@ -63,14 +63,14 @@ key_checks <- list(
 )
 
 geometry_checks <- list(
-  parcels_canonical = list(
-    dataset = "section_05_parcels_canonical",
-    crs_epsg = sf::st_crs(parcels_canonical)$epsg,
-    empty_geometries = sum(sf::st_is_empty(parcels_canonical)),
-    invalid_geometries = sum(!sf::st_is_valid(parcels_canonical), na.rm = TRUE),
-    pass = !is.na(sf::st_crs(parcels_canonical)$epsg) &&
-      sf::st_crs(parcels_canonical)$epsg == GEOMETRY_ASSUMPTIONS$expected_crs_epsg &&
-      sum(sf::st_is_empty(parcels_canonical)) == 0
+  retail_classified_parcels = list(
+    dataset = "section_05_retail_classified_parcels",
+    crs_epsg = sf::st_crs(retail_classified_parcels)$epsg,
+    empty_geometries = sum(sf::st_is_empty(retail_classified_parcels)),
+    invalid_geometries = sum(!sf::st_is_valid(retail_classified_parcels), na.rm = TRUE),
+    pass = !is.na(sf::st_crs(retail_classified_parcels)$epsg) &&
+      sf::st_crs(retail_classified_parcels)$epsg == GEOMETRY_ASSUMPTIONS$expected_crs_epsg &&
+      sum(sf::st_is_empty(retail_classified_parcels)) == 0
   ),
   parcel_shortlist_cluster = list(
     dataset = "section_05_parcel_shortlist_cluster",
@@ -132,6 +132,10 @@ invalid_cluster <- geometry_checks$parcel_shortlist_cluster$invalid_geometries
 if (is.finite(invalid_cluster) && invalid_cluster > 0) {
   warnings <- c(warnings, paste0("Cluster shortlist has invalid geometries: ", invalid_cluster))
 }
+missing_classified_geom <- retail_intensity_report$counts$retail_classified_missing_geometry
+if (is.finite(missing_classified_geom) && missing_classified_geom > 0) {
+  warnings <- c(warnings, paste0("Retail classified parcels missing geometry after late attach: ", missing_classified_geom))
+}
 
 schema_pass <- all(vapply(schema_checks, `[[`, logical(1), "pass"))
 key_pass <- all(vapply(key_checks, `[[`, logical(1), "pass"))
@@ -151,7 +155,7 @@ validation_report <- list(
 
 save_artifact(
   validation_report,
-  "notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_validation_report.rds"
+  resolve_output_path("05_parcels", "section_05_validation_report")
 )
 
 if (!isTRUE(validation_report$pass)) {

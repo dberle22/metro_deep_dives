@@ -6,13 +6,17 @@ initialize_section_runtime()
 
 message("Running section 04 cluster visuals")
 
-cluster_zones <- readRDS("notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_cluster_zones.rds")
-cluster_zone_summary <- readRDS("notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_cluster_zone_summary.rds")
-zone_inputs <- readRDS("notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_zone_input_candidates.rds")
-market_county_sf <- readRDS("notebooks/retail_opportunity_finder/sections/02_market_overview/outputs/section_02_market_county_sf.rds")
+cluster_zones <- readRDS(read_artifact_path("04_zones", "section_04_cluster_zones"))
+cluster_zone_summary <- readRDS(read_artifact_path("04_zones", "section_04_cluster_zone_summary"))
+zone_inputs <- readRDS(read_artifact_path("04_zones", "section_04_zone_input_candidates"))
+market_county_sf <- readRDS(read_artifact_path("02_market_overview", "section_02_market_county_sf"))
 
-context_dir <- "notebooks/retail_opportunity_finder/sections/02_market_overview/context_layers/outputs"
-read_optional_sf <- function(path) {
+read_optional_sf <- function(section_id, artifact_name, subdir = NULL) {
+  path <- tryCatch(
+    read_artifact_path(section_id, artifact_name, subdir = subdir),
+    error = function(e) NULL
+  )
+  if (is.null(path)) return(NULL)
   if (!file.exists(path)) return(NULL)
   obj <- readRDS(path)
   if (!inherits(obj, "sf")) return(NULL)
@@ -20,10 +24,10 @@ read_optional_sf <- function(path) {
   obj
 }
 
-context_cbsa_sf <- read_optional_sf(file.path(context_dir, "section_02_context_cbsa_boundary_sf.rds"))
-context_places_sf <- read_optional_sf(file.path(context_dir, "section_02_context_places_sf.rds"))
-context_roads_sf <- read_optional_sf(file.path(context_dir, "section_02_context_major_roads_sf.rds"))
-context_water_sf <- read_optional_sf(file.path(context_dir, "section_02_context_water_sf.rds"))
+context_cbsa_sf <- read_optional_sf("02_market_overview", "section_02_context_cbsa_boundary_sf", subdir = "context_layers")
+context_places_sf <- read_optional_sf("02_market_overview", "section_02_context_places_sf", subdir = "context_layers")
+context_roads_sf <- read_optional_sf("02_market_overview", "section_02_context_major_roads_sf", subdir = "context_layers")
+context_water_sf <- read_optional_sf("02_market_overview", "section_02_context_water_sf", subdir = "context_layers")
 
 align_crs <- function(x, target) {
   if (is.null(x)) return(NULL)
@@ -171,11 +175,11 @@ save_artifact(
     cluster_zone_map_plot = cluster_zone_map_plot,
     cluster_summary_gt = cluster_summary_gt
   ),
-  "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_cluster_visual_objects.rds"
+  resolve_output_path("04_zones", "section_04_cluster_visual_objects")
 )
 
 ggplot2::ggsave(
-  filename = "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_cluster_zone_map.png",
+  filename = resolve_output_path("04_zones", "section_04_cluster_zone_map", ext = "png"),
   plot = cluster_zone_map_plot,
   width = 9,
   height = 7,

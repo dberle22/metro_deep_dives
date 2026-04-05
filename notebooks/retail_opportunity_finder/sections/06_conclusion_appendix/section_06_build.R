@@ -7,14 +7,14 @@ initialize_section_runtime()
 message("Running section 06 build: 06_conclusion_appendix")
 
 required_paths <- c(
-  "notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_top_tracts.rds",
-  "notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_validation_report.rds",
-  "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_zone_summary.rds",
-  "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_cluster_zone_summary.rds",
-  "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_validation_report.rds",
-  "notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_zone_overlay_cluster.rds",
-  "notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_parcel_shortlist_cluster.rds",
-  "notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_validation_report.rds"
+  read_artifact_path("03_eligibility_scoring", "section_03_top_tracts"),
+  read_artifact_path("03_eligibility_scoring", "section_03_validation_report"),
+  read_artifact_path("04_zones", "section_04_zone_summary"),
+  read_artifact_path("04_zones", "section_04_cluster_zone_summary"),
+  read_artifact_path("04_zones", "section_04_validation_report"),
+  read_artifact_path("05_parcels", "section_05_zone_overlay_cluster"),
+  read_artifact_path("05_parcels", "section_05_parcel_shortlist_cluster"),
+  read_artifact_path("05_parcels", "section_05_validation_report")
 )
 missing_paths <- required_paths[!file.exists(required_paths)]
 if (length(missing_paths) > 0) {
@@ -24,15 +24,15 @@ if (length(missing_paths) > 0) {
   )
 }
 
-top_tracts <- readRDS("notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_top_tracts.rds")
-zone_summary <- readRDS("notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_zone_summary.rds")
-cluster_zone_summary <- readRDS("notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_cluster_zone_summary.rds")
-zone_overlay_cluster <- readRDS("notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_zone_overlay_cluster.rds")
-parcel_shortlist_cluster <- readRDS("notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_parcel_shortlist_cluster.rds")
+top_tracts <- readRDS(read_artifact_path("03_eligibility_scoring", "section_03_top_tracts"))
+zone_summary <- readRDS(read_artifact_path("04_zones", "section_04_zone_summary"))
+cluster_zone_summary <- readRDS(read_artifact_path("04_zones", "section_04_cluster_zone_summary"))
+zone_overlay_cluster <- readRDS(read_artifact_path("05_parcels", "section_05_zone_overlay_cluster"))
+parcel_shortlist_cluster <- readRDS(read_artifact_path("05_parcels", "section_05_parcel_shortlist_cluster"))
 
-section_03_report <- readRDS("notebooks/retail_opportunity_finder/sections/03_eligibility_scoring/outputs/section_03_validation_report.rds")
-section_04_report <- readRDS("notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_validation_report.rds")
-section_05_report <- readRDS("notebooks/retail_opportunity_finder/sections/05_parcels/outputs/section_05_validation_report.rds")
+section_03_report <- readRDS(read_artifact_path("03_eligibility_scoring", "section_03_validation_report"))
+section_04_report <- readRDS(read_artifact_path("04_zones", "section_04_validation_report"))
+section_05_report <- readRDS(read_artifact_path("05_parcels", "section_05_validation_report"))
 
 or_else <- function(x, fallback) if (is.null(x)) fallback else x
 
@@ -93,9 +93,9 @@ conclusion_payload <- list(
 qa_summary <- tibble::tibble(
   section = c("section_03", "section_04", "section_05"),
   report_path = c(
-    "sections/03_eligibility_scoring/outputs/section_03_validation_report.rds",
-    "sections/04_zones/outputs/section_04_validation_report.rds",
-    "sections/05_parcels/outputs/section_05_validation_report.rds"
+    read_artifact_path("03_eligibility_scoring", "section_03_validation_report"),
+    read_artifact_path("04_zones", "section_04_validation_report"),
+    read_artifact_path("05_parcels", "section_05_validation_report")
   ),
   pass = c(
     isTRUE(or_else(section_03_report$pass, (all(vapply(section_03_report$checks[1:5], `[[`, logical(1), "pass")) && all(unlist(section_03_report$logic_checks))))),
@@ -143,11 +143,11 @@ appendix_payload <- list(
 
 save_artifact(
   conclusion_payload,
-  "notebooks/retail_opportunity_finder/sections/06_conclusion_appendix/outputs/section_06_conclusion_payload.rds"
+  resolve_output_path("06_conclusion_appendix", "section_06_conclusion_payload")
 )
 save_artifact(
   appendix_payload,
-  "notebooks/retail_opportunity_finder/sections/06_conclusion_appendix/outputs/section_06_appendix_payload.rds"
+  resolve_output_path("06_conclusion_appendix", "section_06_appendix_payload")
 )
 
 message("Section 06 build complete.")

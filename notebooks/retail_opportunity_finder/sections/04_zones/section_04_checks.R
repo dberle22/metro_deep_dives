@@ -6,11 +6,11 @@ initialize_section_runtime()
 
 message("Running section 04 checks: 04_zones")
 
-zone_candidates <- readRDS("notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_zone_candidate_tracts.rds")
-zone_components <- readRDS("notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_zone_components.rds")
-component_summary <- readRDS("notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_component_summary.rds")
-zones <- readRDS("notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_zones.rds")
-zone_summary <- readRDS("notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_zone_summary.rds")
+zone_candidates <- readRDS(read_artifact_path("04_zones", "section_04_zone_candidate_tracts"))
+zone_components <- readRDS(read_artifact_path("04_zones", "section_04_zone_components"))
+component_summary <- readRDS(read_artifact_path("04_zones", "section_04_component_summary"))
+zones <- readRDS(read_artifact_path("04_zones", "section_04_zones"))
+zone_summary <- readRDS(read_artifact_path("04_zones", "section_04_zone_summary"))
 
 schema_checks <- list(
   zone_candidates = validate_columns(
@@ -105,7 +105,7 @@ report <- list(
 
 save_artifact(
   report,
-  "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_validation_report.rds"
+  resolve_output_path("04_zones", "section_04_validation_report")
 )
 
 if (!isTRUE(report$pass)) {

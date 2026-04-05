@@ -6,11 +6,11 @@ initialize_section_runtime()
 
 message("Running section 04 cluster checks")
 
-zone_inputs <- readRDS("notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_zone_input_candidates.rds")
-cluster_assignments <- readRDS("notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_cluster_assignments.rds")
-cluster_zones <- readRDS("notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_cluster_zones.rds")
-cluster_zone_summary <- readRDS("notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_cluster_zone_summary.rds")
-cluster_params <- readRDS("notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_cluster_params.rds")
+zone_inputs <- readRDS(read_artifact_path("04_zones", "section_04_zone_input_candidates"))
+cluster_assignments <- readRDS(read_artifact_path("04_zones", "section_04_cluster_assignments"))
+cluster_zones <- readRDS(read_artifact_path("04_zones", "section_04_cluster_zones"))
+cluster_zone_summary <- readRDS(read_artifact_path("04_zones", "section_04_cluster_zone_summary"))
+cluster_params <- readRDS(read_artifact_path("04_zones", "section_04_cluster_params"))
 
 schema_checks <- list(
   cluster_assignments = validate_columns(
@@ -92,7 +92,7 @@ validation_report <- list(
 
 save_artifact(
   validation_report,
-  "notebooks/retail_opportunity_finder/sections/04_zones/outputs/section_04_cluster_validation_report.rds"
+  resolve_output_path("04_zones", "section_04_cluster_validation_report")
 )
 
 if (!isTRUE(validation_report$pass)) {

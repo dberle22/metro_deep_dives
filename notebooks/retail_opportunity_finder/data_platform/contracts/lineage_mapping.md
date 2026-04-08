@@ -92,7 +92,7 @@ During this slice, Section 03 and Section 04 still emit `section_*` artifacts fo
 - `parcel.parcel_lineage`
   - sources: `ref.market_county_membership`, `parcel_geometry_join_qa_county_summary.rds`, `rof_parcel.parcel_county_load_log`, `parcel.parcels_canonical`
   - downstream consumers: QA review, release operations, county troubleshooting
-- `parcel.retail_parcels`
+- `parcel.retail_parcels` (DEPRECATED - use parcel.parcels_canonical with retail_flag = TRUE)
   - sources: compatibility subset of `parcel.parcels_canonical`
   - downstream consumers: Section 05 retail intensity and shortlist prep
 - `qa.parcel_validation_results`

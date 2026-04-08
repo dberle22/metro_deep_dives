@@ -188,7 +188,7 @@ One row per `parcel_uid`.
 | `parcel_id` | Source parcel identifier. | External traceability. |
 | `alt_key` | Alternate parcel key from source. | Backup linkage field. |
 | `join_key` | Standardized parcel join key. | Key field for county geometry joins. |
-| `census_block_id` | Block GEOID where available. | Enables tract derivation without geometry in some cases. |
+| `census_block_id` | Source census geography key as provided by the parcel source. | In current Florida parcel data this often behaves like a tract-prefixed key rather than a full 15-digit Census block GEOID. |
 | `land_use_code` | Standardized county land-use code. | Basis for retail classification. |
 | `owner_name` | Owner name from parcel tabular data. | Parcel review context. |
 | `owner_addr` | Owner mailing address. | Parcel review context. |
@@ -483,17 +483,17 @@ One row per retail `parcel_uid`.
 | `state_abbr` | State abbreviation. | Geographic context. |
 | `state_fips` | State FIPS. | Geographic context. |
 | `join_key` | Standardized parcel join key. | Source/geometry compatibility. |
-| `census_block_id` | Source block GEOID where available. | Allows tract derivation without geometry when block is present. |
+| `census_block_id` | Source census geography key where available. | Layer 05 currently derives tract candidates by normalizing to digits and validating the first 11 digits against tract geography. |
 | `tract_geoid` | Assigned tract GEOID. | The main analytic bridge into tract and zone products. |
-| `assignment_method` | How the tract was assigned, such as block-derived or spatial. | Tells us whether the assignment came from a key-based shortcut or geometry operation. |
+| `assignment_method` | How the tract was assigned, currently normalized tract-prefix matching or unassigned. | Tells us whether the assignment came from validated tabular geography rather than geometry operations. |
 | `assignment_status` | Assignment result, usually `assigned` or unassigned. | QA and coverage tracking. |
 | `parcel_area_sqmi` | Parcel area in square miles. | Needed for tract retail area aggregation. |
 | `build_source` | Build provenance. | Audit metadata. |
 | `run_timestamp` | Build timestamp. | Audit metadata. |
 
 ### Core logic summary
-- Prefer tract derivation from 15-digit `census_block_id` where possible by taking the first 11 digits.
-- Fall back to spatial assignment when block-based tract derivation is unavailable.
+- Normalize `census_block_id` to digits and use the first 11 digits as a tract candidate when present.
+- Validate the tract candidate against `foundation.market_tract_geometry` for the parcel's market geography.
 - Persist assignment outcome so downstream consumers do not repeat this work.
 
 ## 11. `serving.parcel_shortlist_summary`

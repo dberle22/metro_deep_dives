@@ -77,7 +77,7 @@ These are the standard metadata fields for the V2 platform transition. Not every
 - `parcel.parcels_canonical`
 - `parcel.parcel_join_qa`
 - `parcel.parcel_lineage`
-- `parcel.retail_parcels`
+- `parcel.retail_parcels` (DEPRECATED - use parcel.parcels_canonical with retail_flag = TRUE)
 - `qa.parcel_validation_results`
 - `qa.parcel_unmapped_use_codes`
 - parcel geometry continues to be served from existing `.RDS` files in this slice

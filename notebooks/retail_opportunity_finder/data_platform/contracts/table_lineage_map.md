@@ -60,7 +60,7 @@ See also:
 | `parcel.parcels_canonical` | `parcel_uid` | `rof_parcel.parcel_tabular_clean`, `ref.market_county_membership` | Implemented market-aware canonical parcel table without geometry. |
 | `parcel.parcel_join_qa` | `market_key`, `county_geoid` | `parcel.parcel_lineage` | Implemented compatibility county-grain parcel geometry QA projection. |
 | `parcel.parcel_lineage` | `market_key`, `county_geoid` | `ref.market_county_membership`, `parcel_geometry_join_qa_county_summary.rds`, `rof_parcel.parcel_county_load_log`, `parcel.parcels_canonical` | Implemented primary county-grain parcel lineage table. |
-| `parcel.retail_parcels` | `parcel_uid` | `parcel.parcels_canonical` | Implemented compatibility retail-only subset without geometry. |
+| `parcel.retail_parcels` | `parcel_uid` | `parcel.parcels_canonical` | DEPRECATED - Implemented compatibility retail-only subset without geometry. Use parcel.parcels_canonical with retail_flag = TRUE. |
 | `qa.parcel_validation_results` | one row per QA check | `parcel.*` tables | Implemented parcel-layer QA summary. |
 | `qa.parcel_unmapped_use_codes` | `land_use_code` | `parcel.parcels_canonical`, `ref.land_use_mapping` | Implemented unresolved parcel use-code coverage table. |
 | tract GEOID derivation from block GEOID | derived key rule | Census GEOID standard | Use first 11 characters of a 15-character block GEOID where block GEOIDs are present. |

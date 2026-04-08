@@ -26,4 +26,4 @@
 - Geometry is intentionally excluded from DuckDB in this layer.
 - The current county filter still depends on source `county_name` alignment plus county reference membership.
 - The published table already carries retail classification columns, which makes it the primary parcel-grain table in the simplified Layer 04 design.
-- `parcel.retail_parcels` is retained only as a downstream compatibility subset.
+- `parcel.retail_parcels` is retained only as a downstream compatibility subset (DEPRECATED - use this table with retail_flag = TRUE instead).

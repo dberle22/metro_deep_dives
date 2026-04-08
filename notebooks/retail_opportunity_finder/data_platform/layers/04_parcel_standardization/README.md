@@ -48,7 +48,7 @@ This keeps Section 05 compatible and avoids unnecessary geometry conversion and 
   - grain: one row per parcel-backed market county
   - geometry: none in DuckDB
   - role: county-grain operational lineage and published parcel counts
-- `parcel.retail_parcels`
+- `parcel.retail_parcels` (DEPRECATED - use parcel.parcels_canonical with retail_flag = TRUE)
   - grain: one row per `parcel_uid`
   - geometry: none in DuckDB
   - role: retail-classified enrichment on top of canonical parcels
@@ -88,7 +88,7 @@ Layer 04 now also has table-owned organizational assets under `tables/` for:
 
 Historical compatibility table assets now live under `tables/archive/`:
 - `parcel.parcel_join_qa`
-- `parcel.retail_parcels`
+- `parcel.retail_parcels` (DEPRECATED - use parcel.parcels_canonical with retail_flag = TRUE)
 
 These files were extracted for organization only in this pass. No tables were rebuilt, and the `.sql` files are companion placeholders rather than active execution paths.
 
@@ -101,7 +101,7 @@ Layer 04 now treats the following as the primary managed products:
 - `qa.parcel_unmapped_use_codes`
 
 Compatibility outputs are still published for downstream consumers that have not yet been refactored:
-- `parcel.retail_parcels`
+- `parcel.retail_parcels` (DEPRECATED - use parcel.parcels_canonical with retail_flag = TRUE)
   - compatibility subset of `parcel.parcels_canonical` filtered to `retail_flag = TRUE`
 - `parcel.parcel_join_qa`
   - compatibility county QA projection derived from `parcel.parcel_lineage`

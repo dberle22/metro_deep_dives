@@ -20,6 +20,35 @@ db_path <- paste0(data, "/duckdb", "/metro_deep_dive.duckdb")
 # Connect to the DB ----
 con <- dbConnect(duckdb::duckdb(), dbdir = db_path, read_only = FALSE)
 
+resolve_tract_state_scope <- function(env_var = "ROF_TRACT_STATE_SCOPE") {
+  raw_value <- Sys.getenv(env_var, unset = "")
+  if (!nzchar(raw_value)) {
+    return(c(state.abb, "DC"))
+  }
+
+  states <- raw_value %>%
+    stringr::str_split(",") %>%
+    purrr::pluck(1) %>%
+    stringr::str_trim() %>%
+    toupper() %>%
+    unique()
+
+  valid_states <- c(state.abb, "DC")
+  invalid_states <- setdiff(states, valid_states)
+  if (length(invalid_states) > 0) {
+    stop(
+      sprintf(
+        "Invalid %s values: %s",
+        env_var,
+        paste(invalid_states, collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+
+  states
+}
+
 # CBSA <> County ---- 
 # Read in Raw File
 cbsa_county_xwalk_raw <- read_excel(paste0(data, "/demographics/raw/crosswalks/cbsa_county_xwalk_census.xlsx"),
@@ -70,12 +99,16 @@ DBI::dbWriteTable(con, DBI::Id(schema="silver", table="xwalk_cbsa_primary_city")
                   cbsa_city_clean, overwrite = TRUE)
 
 # Tract <> County ----
+# Default target is a national 50-state + DC tract backbone.
+# Set ROF_TRACT_STATE_SCOPE="FL,GA,NC" (comma-separated) to build a narrower slice.
+tract_state_scope <- resolve_tract_state_scope()
+
 # Ingest from Tigris
 tracts_2023 <- tigris::tracts(year = 2023, cb = TRUE)
 
 tracts_clean <- tracts_2023 %>%
   sf::st_drop_geometry() %>%
-  filter(STUSPS %in% c("NC", "FL", "GA")) %>%
+  filter(STUSPS %in% tract_state_scope) %>%
   select(state_fip = STATEFP,
          county_fip = COUNTYFP,
          tract_fip = TRACTCE,

@@ -1,11 +1,42 @@
 source("notebooks/retail_opportunity_finder/sections/_shared/bootstrap.R")
 initialize_section_runtime()
 
+tract_scoring_workflow_path <- "notebooks/retail_opportunity_finder/data_platform/layers/02_tract_scoring/tract_scoring_workflow.R"
+if (!exists("resolve_scoring_market_profiles")) {
+  if (!file.exists(tract_scoring_workflow_path)) {
+    stop("Missing tract scoring workflow file.", call. = FALSE)
+  }
+  source(tract_scoring_workflow_path)
+}
+
 platform_helpers_path <- "notebooks/retail_opportunity_finder/data_platform/shared/platform_helpers.R"
 if (!file.exists(platform_helpers_path)) {
   stop("Missing data platform helper file.", call. = FALSE)
 }
 source(platform_helpers_path)
+
+make_validation_row <- function(check_name, severity = "error", dataset = NA_character_, metric_value = NA_real_, pass = FALSE, details = NA_character_) {
+  tibble::tibble(
+    check_name = check_name,
+    severity = severity,
+    dataset = dataset,
+    metric_value = metric_value,
+    pass = pass,
+    details = details
+  )
+}
+
+ZONE_BUILD_LAYER_ROOT <- "notebooks/retail_opportunity_finder/data_platform/layers/03_zone_build"
+ZONE_BUILD_TABLE_ROOT <- file.path(ZONE_BUILD_LAYER_ROOT, "tables")
+ZONE_BUILD_TARGET_STATES <- c("FL", "GA", "NC", "SC")
+
+resolve_zone_build_table_asset <- function(table_name, extension) {
+  path <- file.path(ZONE_BUILD_TABLE_ROOT, paste0(table_name, ".", extension))
+  if (!file.exists(path)) {
+    stop(sprintf("Zone build layer table asset not found: %s", path), call. = FALSE)
+  }
+  path
+}
 
 safe_wmean <- function(x, w) {
   if (all(is.na(x))) return(NA_real_)
@@ -56,414 +87,206 @@ connected_components <- function(neighbor_list) {
   component_id
 }
 
-build_zone_input_candidates <- function(scored_tracts, tract_sf, tract_component_scores, cluster_seed_tracts) {
-  scored_required <- c(
-    "tract_geoid", "eligible_v1", "tract_score", "tract_rank",
-    "pop_total", "pop_growth_3yr", "pop_density", "units_per_1k_3yr", "price_proxy_pctl"
-  )
-  tract_sf_required <- c("tract_geoid", "eligible_v1")
-  component_required <- c(
-    "tract_geoid", "eligible_v1", "is_scored",
-    "pop_growth_3yr", "pop_density", "units_per_1k_3yr", "price_proxy_pctl"
-  )
-  cluster_seed_required <- c(
-    "tract_geoid", "tract_score", "cluster_seed_rank", "cluster_top_share", "cluster_cutoff_n"
-  )
+source(resolve_zone_build_table_asset("zones.zone_input_candidates", "R"))
+source(resolve_zone_build_table_asset("zones.contiguity_zone_components", "R"))
+source(resolve_zone_build_table_asset("zones.contiguity_zone_summary", "R"))
+source(resolve_zone_build_table_asset("zones.contiguity_zone_geometries", "R"))
+source(resolve_zone_build_table_asset("zones.cluster_assignments", "R"))
+source(resolve_zone_build_table_asset("zones.cluster_zone_summary", "R"))
+source(resolve_zone_build_table_asset("zones.cluster_zone_geometries", "R"))
 
-  scored_schema_check <- validate_columns(scored_tracts, scored_required, "section_03_scored_tracts")
-  tract_sf_schema_check <- validate_columns(tract_sf, tract_sf_required, "section_03_tract_sf")
-  component_schema_check <- validate_columns(tract_component_scores, component_required, "section_03_tract_component_scores")
-  cluster_seed_schema_check <- validate_columns(cluster_seed_tracts, cluster_seed_required, "section_03_cluster_seed_tracts")
+read_zone_build_scoring_inputs <- function(con, profile) {
+  if (!duckdb_table_exists(con, "scoring", "tract_scores")) {
+    stop("Missing scoring.tract_scores; run Layer 02 before Layer 03.", call. = FALSE)
+  }
 
-  scored_key_check <- validate_unique_key(scored_tracts, "tract_geoid", "section_03_scored_tracts")
-  tract_sf_key_check <- validate_unique_key(tract_sf, "tract_geoid", "section_03_tract_sf")
-  component_key_check <- validate_unique_key(tract_component_scores, "tract_geoid", "section_03_tract_component_scores")
-  cluster_seed_key_check <- validate_unique_key(cluster_seed_tracts, "tract_geoid", "section_03_cluster_seed_tracts")
-  tract_sf_geom_check <- validate_sf(tract_sf, "section_03_tract_sf", GEOMETRY_ASSUMPTIONS$expected_crs_epsg)
+  if (!duckdb_table_exists(con, "scoring", "cluster_seed_tracts")) {
+    stop("Missing scoring.cluster_seed_tracts; run Layer 02 before Layer 03.", call. = FALSE)
+  }
 
-  cluster_seed_from_scored <- scored_tracts %>%
-    semi_join(cluster_seed_tracts %>% select(tract_geoid), by = "tract_geoid") %>%
-    distinct(tract_geoid)
+  if (!duckdb_table_exists(con, "foundation", "tract_features")) {
+    stop("Missing foundation.tract_features; run Layer 01 before Layer 03.", call. = FALSE)
+  }
 
-  cluster_seed_from_components <- tract_component_scores %>%
-    semi_join(cluster_seed_tracts %>% select(tract_geoid), by = "tract_geoid") %>%
-    distinct(tract_geoid)
-
-  cluster_seed_from_geom <- tract_sf %>%
-    sf::st_drop_geometry() %>%
-    semi_join(cluster_seed_tracts %>% select(tract_geoid), by = "tract_geoid") %>%
-    distinct(tract_geoid)
-
-  missing_scored_in_geom <- setdiff(cluster_seed_from_scored$tract_geoid, cluster_seed_from_geom$tract_geoid)
-  missing_geom_in_scored <- setdiff(cluster_seed_from_geom$tract_geoid, cluster_seed_from_scored$tract_geoid)
-  missing_component_in_geom <- setdiff(cluster_seed_from_components$tract_geoid, cluster_seed_from_geom$tract_geoid)
-
-  eligible_zone_inputs <- tract_sf %>%
-    inner_join(
-      scored_tracts %>%
-        semi_join(cluster_seed_tracts %>% select(tract_geoid), by = "tract_geoid") %>%
-        select(
-          tract_geoid,
-          tract_score,
-          tract_rank,
-          pop_total,
-          pop_growth_3yr,
-          pop_density,
-          units_per_1k_3yr,
-          price_proxy_pctl
-        ),
-      by = "tract_geoid"
-    ) %>%
-    mutate(zone_candidate = TRUE)
-
-  readiness_report <- list(
-    run_metadata = run_metadata(),
-    schema_checks = list(
-      scored_schema_check = scored_schema_check,
-      tract_sf_schema_check = tract_sf_schema_check,
-      component_schema_check = component_schema_check,
-      cluster_seed_schema_check = cluster_seed_schema_check
-    ),
-    key_checks = list(
-      scored_key_check = scored_key_check,
-      tract_sf_key_check = tract_sf_key_check,
-      component_key_check = component_key_check,
-      cluster_seed_key_check = cluster_seed_key_check
-    ),
-    geometry_checks = list(
-      tract_sf_geom_check = tract_sf_geom_check
-    ),
-    counts = list(
-      scored_rows = nrow(scored_tracts),
-      tract_sf_rows = nrow(tract_sf),
-      component_rows = nrow(tract_component_scores),
-      cluster_seed_from_scored = nrow(cluster_seed_from_scored),
-      cluster_seed_from_geom = nrow(cluster_seed_from_geom),
-      cluster_seed_from_components = nrow(cluster_seed_from_components),
-      zone_candidate_rows = nrow(eligible_zone_inputs)
-    ),
-    set_differences = list(
-      missing_scored_in_geom = missing_scored_in_geom,
-      missing_geom_in_scored = missing_geom_in_scored,
-      missing_component_in_geom = missing_component_in_geom
-    ),
-    pass = isTRUE(scored_schema_check$pass) &&
-      isTRUE(tract_sf_schema_check$pass) &&
-      isTRUE(component_schema_check$pass) &&
-      isTRUE(scored_key_check$pass) &&
-      isTRUE(tract_sf_key_check$pass) &&
-      isTRUE(component_key_check$pass) &&
-      isTRUE(cluster_seed_schema_check$pass) &&
-      isTRUE(cluster_seed_key_check$pass) &&
-      isTRUE(tract_sf_geom_check$pass) &&
-      length(missing_scored_in_geom) == 0 &&
-      length(missing_geom_in_scored) == 0 &&
-      length(missing_component_in_geom) == 0
-  )
-
-  list(
-    eligible_zone_inputs = eligible_zone_inputs,
-    zone_candidate_tracts = eligible_zone_inputs %>%
-      sf::st_drop_geometry() %>%
-      select(tract_geoid) %>%
-      mutate(zone_candidate = TRUE) %>%
-      distinct(tract_geoid, .keep_all = TRUE),
-    readiness_report = readiness_report
-  )
-}
-
-build_contiguity_zone_products <- function(eligible_zone_inputs) {
-  candidate_sf <- eligible_zone_inputs %>% arrange(tract_geoid)
-  neighbor_idx <- sf::st_touches(candidate_sf)
-  n <- nrow(candidate_sf)
-
-  edge_tbl <- lapply(seq_len(n), function(i) {
-    nbrs <- neighbor_idx[[i]]
-    if (length(nbrs) == 0) return(NULL)
-    nbrs <- nbrs[nbrs > i]
-    if (length(nbrs) == 0) return(NULL)
-    data.frame(
-      from_idx = rep(i, length(nbrs)),
-      to_idx = nbrs,
-      stringsAsFactors = FALSE
+  scored_tracts <- DBI::dbGetQuery(
+    con,
+    glue::glue(
+      "SELECT * FROM scoring.tract_scores ",
+      "WHERE market_key = '{profile$market_key}' AND cbsa_code = '{profile$cbsa_code}'"
     )
-  }) %>%
-    dplyr::bind_rows()
+  ) %>%
+    select(-any_of(c("market_key", "state_scope", "build_source", "run_timestamp")))
 
-  adjacency_edges <- if (nrow(edge_tbl) > 0) {
-    edge_tbl %>%
-      mutate(
-        from_tract_geoid = candidate_sf$tract_geoid[from_idx],
-        to_tract_geoid = candidate_sf$tract_geoid[to_idx]
-      ) %>%
-      select(from_tract_geoid, to_tract_geoid)
-  } else {
-    data.frame(
-      from_tract_geoid = character(),
-      to_tract_geoid = character(),
-      stringsAsFactors = FALSE
+  tract_feature_context <- DBI::dbGetQuery(
+    con,
+    glue::glue(
+      "SELECT cbsa_code, tract_geoid, pop_total ",
+      "FROM foundation.tract_features ",
+      "WHERE cbsa_code = '{profile$cbsa_code}'"
+    )
+  )
+
+  scored_tracts <- scored_tracts %>%
+    left_join(
+      tract_feature_context %>% select(cbsa_code, tract_geoid, pop_total),
+      by = c("cbsa_code", "tract_geoid")
+    )
+
+  cluster_seed_tracts <- DBI::dbGetQuery(
+    con,
+    glue::glue(
+      "SELECT * FROM scoring.cluster_seed_tracts ",
+      "WHERE market_key = '{profile$market_key}' AND cbsa_code = '{profile$cbsa_code}'"
+    )
+  ) %>%
+    select(-any_of(c("market_key", "state_scope", "build_source", "run_timestamp")))
+
+  if (nrow(scored_tracts) == 0) {
+    stop(
+      sprintf(
+        "No scoring.tract_scores rows found for market '%s' (cbsa_code=%s).",
+        profile$market_key,
+        profile$cbsa_code
+      ),
+      call. = FALSE
     )
   }
 
-  component_id <- connected_components(neighbor_idx)
-
-  zone_components <- candidate_sf %>%
-    sf::st_drop_geometry() %>%
-    transmute(
-      tract_geoid,
-      zone_component_id = component_id,
-      zone_component_label = paste0("Zone ", LETTERS[zone_component_id])
-    ) %>%
-    arrange(zone_component_id, tract_geoid)
-
-  component_summary <- zone_components %>%
-    count(zone_component_id, zone_component_label, name = "tract_count") %>%
-    arrange(zone_component_id)
-
-  zone_component_metrics <- eligible_zone_inputs %>%
-    sf::st_drop_geometry() %>%
-    inner_join(zone_components, by = "tract_geoid") %>%
-    group_by(zone_component_id) %>%
-    summarise(
-      tract_count = dplyr::n(),
-      mean_tract_score = mean(tract_score, na.rm = TRUE),
-      .groups = "drop"
+  if (nrow(cluster_seed_tracts) == 0) {
+    stop(
+      sprintf(
+        "No scoring.cluster_seed_tracts rows found for market '%s' (cbsa_code=%s).",
+        profile$market_key,
+        profile$cbsa_code
+      ),
+      call. = FALSE
     )
+  }
 
-  zones_raw <- eligible_zone_inputs %>%
-    inner_join(zone_components, by = "tract_geoid") %>%
-    group_by(zone_component_id) %>%
-    summarise(.groups = "drop") %>%
-    sf::st_make_valid()
-
-  zone_order <- zone_component_metrics %>%
-    arrange(desc(mean_tract_score), zone_component_id) %>%
-    mutate(
-      zone_order = row_number(),
-      zone_id = paste0("zone_", sprintf("%02d", zone_order)),
-      zone_label = paste0("Zone ", LETTERS[zone_order])
-    ) %>%
-    select(zone_component_id, zone_order, zone_id, zone_label, tract_count, mean_tract_score)
-
-  zones <- zones_raw %>%
-    left_join(zone_order, by = "zone_component_id")
-
-  zones_proj <- sf::st_transform(zones, 3086)
-  zone_area_sq_mi <- as.numeric(sf::st_area(zones_proj)) / 2589988.110336
-
-  label_points <- sf::st_point_on_surface(zones)
-  label_coords <- sf::st_coordinates(label_points)
-
-  zones <- zones %>%
-    mutate(
-      zone_area_sq_mi = zone_area_sq_mi,
-      label_lon = label_coords[, "X"],
-      label_lat = label_coords[, "Y"]
-    ) %>%
-    arrange(zone_order)
-
-  zone_summary <- eligible_zone_inputs %>%
-    sf::st_drop_geometry() %>%
-    inner_join(zone_components, by = "tract_geoid") %>%
-    group_by(zone_component_id) %>%
-    summarise(
-      tracts = dplyr::n(),
-      total_population = sum(pop_total, na.rm = TRUE),
-      pop_growth_3yr_wtd = safe_wmean(pop_growth_3yr, pop_total),
-      pop_density_median = median(pop_density, na.rm = TRUE),
-      units_per_1k_3yr_wtd = safe_wmean(units_per_1k_3yr, pop_total),
-      price_proxy_pctl_median = median(price_proxy_pctl, na.rm = TRUE),
-      mean_tract_score = mean(tract_score, na.rm = TRUE),
-      .groups = "drop"
-    ) %>%
+  tract_wkb <- query_tract_geometry_wkb(con, profile = profile, cbsa_code = profile$cbsa_code)
+  tract_sf <- sf_from_wkb_df(tract_wkb, c("tract_geoid")) %>%
     left_join(
-      sf::st_drop_geometry(zones) %>%
-        select(zone_component_id, zone_id, zone_label, zone_order, zone_area_sq_mi),
-      by = "zone_component_id"
-    ) %>%
-    arrange(zone_order) %>%
-    mutate(
-      pop_growth_3yr_wtd_fmt = scales::percent(pop_growth_3yr_wtd, accuracy = 0.1),
-      units_per_1k_3yr_wtd_fmt = scales::number(units_per_1k_3yr_wtd, accuracy = 0.1),
-      price_proxy_pctl_median_fmt = scales::percent(price_proxy_pctl_median, accuracy = 0.1),
-      pop_density_median_fmt = scales::comma(pop_density_median, accuracy = 1),
-      total_population_fmt = scales::comma(total_population, accuracy = 1)
-    ) %>%
-    select(
-      zone_id, zone_label, zone_order, zone_component_id,
-      tracts, total_population, total_population_fmt,
-      pop_growth_3yr_wtd, pop_growth_3yr_wtd_fmt,
-      pop_density_median, pop_density_median_fmt,
-      units_per_1k_3yr_wtd, units_per_1k_3yr_wtd_fmt,
-      price_proxy_pctl_median, price_proxy_pctl_median_fmt,
-      mean_tract_score, zone_area_sq_mi
+      scored_tracts %>% select(tract_geoid, eligible_v1),
+      by = "tract_geoid"
     )
 
   list(
-    adjacency_edges = adjacency_edges,
-    zone_components = zone_components,
-    component_summary = component_summary,
-    zone_labels = zone_order,
-    zones = zones,
-    zone_summary = zone_summary
+    profile = profile,
+    scored_tracts = scored_tracts,
+    tract_component_scores = scored_tracts,
+    cluster_seed_tracts = cluster_seed_tracts,
+    tract_sf = tract_sf
   )
 }
 
-build_cluster_zone_products <- function(eligible_zone_inputs, cluster_params = list(
-  method = "distance_connected_components",
-  eps_meters = 6000,
-  min_pts = 2,
-  noise_policy = "nearest_core",
-  projected_epsg = 3086
-)) {
-  zone_inputs_proj <- sf::st_transform(eligible_zone_inputs, cluster_params$projected_epsg)
-  centroids_proj <- sf::st_centroid(zone_inputs_proj)
-  coords <- sf::st_coordinates(centroids_proj)
+build_zone_build_market_products <- function(con, profile) {
+  scoring_inputs <- read_zone_build_scoring_inputs(con, profile)
 
-  neighbors <- sf::st_is_within_distance(centroids_proj, dist = cluster_params$eps_meters)
-  raw_component_id <- connected_components(neighbors)
+  zone_inputs_bundle <- build_zone_input_candidates(
+    scoring_inputs$scored_tracts,
+    scoring_inputs$tract_sf,
+    scoring_inputs$tract_component_scores,
+    scoring_inputs$cluster_seed_tracts
+  )
 
-  component_sizes <- as.data.frame(table(raw_component_id), stringsAsFactors = FALSE) %>%
-    mutate(
-      raw_component_id = as.integer(raw_component_id),
-      component_size = as.integer(Freq)
-    ) %>%
-    select(raw_component_id, component_size)
-
-  assignment_tbl <- zone_inputs_proj %>%
-    sf::st_drop_geometry() %>%
-    transmute(
-      tract_geoid,
-      tract_score,
-      pop_total,
-      pop_growth_3yr,
-      pop_density,
-      units_per_1k_3yr,
-      price_proxy_pctl,
-      centroid_x = coords[, "X"],
-      centroid_y = coords[, "Y"],
-      raw_component_id = raw_component_id
-    ) %>%
-    left_join(component_sizes, by = "raw_component_id")
-
-  is_small_component <- assignment_tbl$component_size < cluster_params$min_pts
-  cluster_raw_id <- assignment_tbl$raw_component_id
-
-  if (any(is_small_component)) {
-    core_components <- assignment_tbl %>%
-      filter(component_size >= cluster_params$min_pts) %>%
-      distinct(raw_component_id)
-
-    if (cluster_params$noise_policy == "nearest_core" && nrow(core_components) > 0) {
-      core_centroids <- assignment_tbl %>%
-        filter(raw_component_id %in% core_components$raw_component_id) %>%
-        group_by(raw_component_id) %>%
-        summarise(
-          cx = mean(centroid_x, na.rm = TRUE),
-          cy = mean(centroid_y, na.rm = TRUE),
-          .groups = "drop"
-        )
-
-      small_idx <- which(is_small_component)
-      for (i in small_idx) {
-        dx <- core_centroids$cx - assignment_tbl$centroid_x[i]
-        dy <- core_centroids$cy - assignment_tbl$centroid_y[i]
-        nearest <- which.min(dx^2 + dy^2)
-        cluster_raw_id[i] <- core_centroids$raw_component_id[nearest]
-      }
-    } else {
-      max_id <- max(cluster_raw_id, na.rm = TRUE)
-      small_idx <- which(is_small_component)
-      cluster_raw_id[small_idx] <- max_id + seq_along(small_idx)
-    }
+  if (!isTRUE(zone_inputs_bundle$readiness_report$pass)) {
+    stop(
+      sprintf(
+        "Zone input readiness checks failed for market '%s' (cbsa_code=%s).",
+        profile$market_key,
+        profile$cbsa_code
+      ),
+      call. = FALSE
+    )
   }
 
-  assignment_tbl <- assignment_tbl %>%
-    mutate(cluster_raw_id = as.integer(cluster_raw_id))
-
-  cluster_order_tbl <- assignment_tbl %>%
-    group_by(cluster_raw_id) %>%
-    summarise(
-      tracts = dplyr::n(),
-      mean_tract_score = mean(tract_score, na.rm = TRUE),
-      .groups = "drop"
-    ) %>%
-    arrange(desc(mean_tract_score), cluster_raw_id) %>%
-    mutate(
-      cluster_order = row_number(),
-      cluster_id = paste0("cluster_", sprintf("%02d", cluster_order)),
-      cluster_label = paste0("Cluster Zone ", index_to_letters(cluster_order))
-    ) %>%
-    select(cluster_raw_id, cluster_order, cluster_id, cluster_label, tracts, mean_tract_score)
-
-  cluster_assignments <- assignment_tbl %>%
-    left_join(cluster_order_tbl, by = "cluster_raw_id") %>%
-    select(
-      tract_geoid,
-      cluster_raw_id,
-      cluster_id,
-      cluster_label,
-      cluster_order,
-      tracts,
-      tract_score,
-      pop_total,
-      pop_growth_3yr,
-      pop_density,
-      units_per_1k_3yr,
-      price_proxy_pctl
-    )
-
-  cluster_zones <- eligible_zone_inputs %>%
-    inner_join(
-      cluster_assignments %>% select(tract_geoid, cluster_id, cluster_label, cluster_order, cluster_raw_id),
-      by = "tract_geoid"
-    ) %>%
-    group_by(cluster_id, cluster_label, cluster_order, cluster_raw_id) %>%
-    summarise(.groups = "drop") %>%
-    sf::st_make_valid()
-
-  cluster_zones_proj <- sf::st_transform(cluster_zones, cluster_params$projected_epsg)
-  cluster_area_sq_mi <- as.numeric(sf::st_area(cluster_zones_proj)) / 2589988.110336
-
-  label_points_proj <- sf::st_point_on_surface(cluster_zones_proj)
-  label_points_ll <- sf::st_transform(label_points_proj, GEOMETRY_ASSUMPTIONS$expected_crs_epsg)
-  label_coords <- sf::st_coordinates(label_points_ll)
-
-  cluster_zones <- cluster_zones %>%
-    mutate(
-      zone_area_sq_mi = cluster_area_sq_mi,
-      label_lon = label_coords[, "X"],
-      label_lat = label_coords[, "Y"]
-    ) %>%
-    arrange(cluster_order)
-
-  cluster_zone_summary <- eligible_zone_inputs %>%
-    sf::st_drop_geometry() %>%
-    inner_join(cluster_assignments %>% select(tract_geoid, cluster_id, cluster_label, cluster_order), by = "tract_geoid") %>%
-    group_by(cluster_id, cluster_label, cluster_order) %>%
-    summarise(
-      tracts = dplyr::n(),
-      total_population = sum(pop_total, na.rm = TRUE),
-      pop_growth_3yr_wtd = safe_wmean(pop_growth_3yr, pop_total),
-      pop_density_median = median(pop_density, na.rm = TRUE),
-      units_per_1k_3yr_wtd = safe_wmean(units_per_1k_3yr, pop_total),
-      price_proxy_pctl_median = median(price_proxy_pctl, na.rm = TRUE),
-      mean_tract_score = mean(tract_score, na.rm = TRUE),
-      .groups = "drop"
-    ) %>%
-    left_join(
-      cluster_zones %>%
-        sf::st_drop_geometry() %>%
-        select(cluster_id, zone_area_sq_mi),
-      by = "cluster_id"
-    ) %>%
-    arrange(cluster_order)
+  contiguity_products <- build_contiguity_zone_products(zone_inputs_bundle$eligible_zone_inputs)
+  cluster_products <- build_cluster_zone_products(zone_inputs_bundle$eligible_zone_inputs)
 
   list(
-    cluster_assignments = cluster_assignments,
-    cluster_zones = cluster_zones,
-    cluster_zone_summary = cluster_zone_summary,
-    cluster_params = cluster_params
+    profile = profile,
+    scoring_inputs = scoring_inputs,
+    zone_inputs_bundle = zone_inputs_bundle,
+    contiguity_products = contiguity_products,
+    cluster_products = cluster_products
+  )
+}
+
+assess_zone_build_market <- function(con, profile) {
+  scoring_inputs <- read_zone_build_scoring_inputs(con, profile)
+
+  zone_inputs_bundle <- build_zone_input_candidates(
+    scoring_inputs$scored_tracts,
+    scoring_inputs$tract_sf,
+    scoring_inputs$tract_component_scores,
+    scoring_inputs$cluster_seed_tracts
+  )
+
+  list(
+    profile = profile,
+    scoring_inputs = scoring_inputs,
+    zone_inputs_bundle = zone_inputs_bundle,
+    ready = isTRUE(zone_inputs_bundle$readiness_report$pass)
+  )
+}
+
+build_zone_build_market_publication_tables <- function(
+    zone_inputs,
+    contiguity_products,
+    cluster_products,
+    profile = get_market_profile()) {
+  build_sources <- list(
+    zone_input_candidates = sub("^notebooks/retail_opportunity_finder/", "", resolve_zone_build_table_asset("zones.zone_input_candidates", "R")),
+    contiguity_zone_components = sub("^notebooks/retail_opportunity_finder/", "", resolve_zone_build_table_asset("zones.contiguity_zone_components", "R")),
+    contiguity_zone_summary = sub("^notebooks/retail_opportunity_finder/", "", resolve_zone_build_table_asset("zones.contiguity_zone_summary", "R")),
+    contiguity_zone_geometries = sub("^notebooks/retail_opportunity_finder/", "", resolve_zone_build_table_asset("zones.contiguity_zone_geometries", "R")),
+    cluster_assignments = sub("^notebooks/retail_opportunity_finder/", "", resolve_zone_build_table_asset("zones.cluster_assignments", "R")),
+    cluster_zone_summary = sub("^notebooks/retail_opportunity_finder/", "", resolve_zone_build_table_asset("zones.cluster_zone_summary", "R")),
+    cluster_zone_geometries = sub("^notebooks/retail_opportunity_finder/", "", resolve_zone_build_table_asset("zones.cluster_zone_geometries", "R"))
+  )
+
+  list(
+    zone_input_candidates = prepend_market_metadata(
+      sf_to_geometry_wkt_table(zone_inputs %>% select(tract_geoid, eligible_v1, tract_score, tract_rank, zone_candidate)),
+      profile = profile,
+      build_source = build_sources$zone_input_candidates
+    ),
+    contiguity_zone_components = prepend_market_metadata(
+      contiguity_products$zone_components,
+      profile = profile,
+      build_source = build_sources$contiguity_zone_components
+    ) %>%
+      mutate(zone_method = "contiguity"),
+    contiguity_zone_summary = prepend_market_metadata(
+      build_contiguity_zone_summary_table(contiguity_products),
+      profile = profile,
+      build_source = build_sources$contiguity_zone_summary
+    ) %>%
+      mutate(zone_method = "contiguity"),
+    contiguity_zone_geometries = prepend_market_metadata(
+      sf_to_geometry_wkt_table(build_contiguity_zone_geometries_table(contiguity_products)),
+      profile = profile,
+      build_source = build_sources$contiguity_zone_geometries
+    ) %>%
+      mutate(zone_method = "contiguity"),
+    cluster_assignments = prepend_market_metadata(
+      cluster_products$cluster_assignments,
+      profile = profile,
+      build_source = build_sources$cluster_assignments
+    ) %>%
+      mutate(zone_method = "cluster"),
+    cluster_zone_summary = prepend_market_metadata(
+      build_cluster_zone_summary_table(cluster_products),
+      profile = profile,
+      build_source = build_sources$cluster_zone_summary
+    ) %>%
+      mutate(zone_method = "cluster"),
+    cluster_zone_geometries = prepend_market_metadata(
+      sf_to_geometry_wkt_table(build_cluster_zone_geometries_table(cluster_products)),
+      profile = profile,
+      build_source = build_sources$cluster_zone_geometries
+    ) %>%
+      mutate(zone_method = "cluster")
   )
 }
 
@@ -472,19 +295,20 @@ publish_zone_build_products <- function(
     zone_inputs,
     contiguity_products,
     cluster_products,
-    profile = get_market_profile(),
-    build_source = "data_platform/layers/03_zone_build") {
+    profile = get_market_profile()) {
   ensure_rof_duckdb_schemas(con)
+  publication_tables <- build_zone_build_market_publication_tables(
+    zone_inputs = zone_inputs,
+    contiguity_products = contiguity_products,
+    cluster_products = cluster_products,
+    profile = profile
+  )
 
   write_duckdb_table(
     con,
     "zones",
     "zone_input_candidates",
-    prepend_market_metadata(
-      sf_to_geometry_wkt_table(zone_inputs %>% select(tract_geoid, eligible_v1, tract_score, tract_rank, zone_candidate)),
-      profile = profile,
-      build_source = build_source
-    ),
+    publication_tables$zone_input_candidates,
     overwrite = TRUE
   )
 
@@ -492,8 +316,7 @@ publish_zone_build_products <- function(
     con,
     "zones",
     "contiguity_zone_components",
-    prepend_market_metadata(contiguity_products$zone_components, profile = profile, build_source = build_source) %>%
-      mutate(zone_method = "contiguity"),
+    publication_tables$contiguity_zone_components,
     overwrite = TRUE
   )
 
@@ -501,8 +324,7 @@ publish_zone_build_products <- function(
     con,
     "zones",
     "contiguity_zone_summary",
-    prepend_market_metadata(contiguity_products$zone_summary, profile = profile, build_source = build_source) %>%
-      mutate(zone_method = "contiguity"),
+    publication_tables$contiguity_zone_summary,
     overwrite = TRUE
   )
 
@@ -510,12 +332,7 @@ publish_zone_build_products <- function(
     con,
     "zones",
     "contiguity_zone_geometries",
-    prepend_market_metadata(
-      sf_to_geometry_wkt_table(contiguity_products$zones),
-      profile = profile,
-      build_source = build_source
-    ) %>%
-      mutate(zone_method = "contiguity"),
+    publication_tables$contiguity_zone_geometries,
     overwrite = TRUE
   )
 
@@ -523,8 +340,7 @@ publish_zone_build_products <- function(
     con,
     "zones",
     "cluster_assignments",
-    prepend_market_metadata(cluster_products$cluster_assignments, profile = profile, build_source = build_source) %>%
-      mutate(zone_method = "cluster"),
+    publication_tables$cluster_assignments,
     overwrite = TRUE
   )
 
@@ -532,8 +348,7 @@ publish_zone_build_products <- function(
     con,
     "zones",
     "cluster_zone_summary",
-    prepend_market_metadata(cluster_products$cluster_zone_summary, profile = profile, build_source = build_source) %>%
-      mutate(zone_method = "cluster"),
+    publication_tables$cluster_zone_summary,
     overwrite = TRUE
   )
 
@@ -541,12 +356,7 @@ publish_zone_build_products <- function(
     con,
     "zones",
     "cluster_zone_geometries",
-    prepend_market_metadata(
-      sf_to_geometry_wkt_table(cluster_products$cluster_zones),
-      profile = profile,
-      build_source = build_source
-    ) %>%
-      mutate(zone_method = "cluster"),
+    publication_tables$cluster_zone_geometries,
     overwrite = TRUE
   )
 
@@ -555,6 +365,372 @@ publish_zone_build_products <- function(
       zone_input_candidates = nrow(zone_inputs),
       contiguity_zones = nrow(contiguity_products$zone_summary),
       cluster_zones = nrow(cluster_products$cluster_zone_summary)
+    )
+  )
+}
+
+build_zone_build_layer_publications <- function(
+    con,
+    profiles = resolve_scoring_market_profiles(con, target_states = ZONE_BUILD_TARGET_STATES)) {
+  per_market <- list()
+  skipped_markets <- list()
+
+  for (profile in profiles) {
+    result <- tryCatch(
+      {
+        assessment <- assess_zone_build_market(con, profile)
+
+        if (!isTRUE(assessment$ready)) {
+          readiness <- assessment$zone_inputs_bundle$readiness_report
+          skipped_tbl <- tibble::tibble(
+            market_key = profile$market_key,
+            cbsa_code = profile$cbsa_code,
+            state_scope = format_state_scope(profile),
+            scored_rows = readiness$counts$scored_rows,
+            tract_sf_rows = readiness$counts$tract_sf_rows,
+            cluster_seed_from_scored = readiness$counts$cluster_seed_from_scored,
+            cluster_seed_from_geom = readiness$counts$cluster_seed_from_geom,
+            missing_scored_in_geom = length(readiness$set_differences$missing_scored_in_geom),
+            missing_geom_in_scored = length(readiness$set_differences$missing_geom_in_scored),
+            missing_component_in_geom = length(readiness$set_differences$missing_component_in_geom),
+            reason = sprintf(
+              "Zone input readiness failed: %s scored cluster-seed tracts missing from tract geometry; %s geometry-only cluster-seed tracts missing from scored inputs; %s component cluster-seed tracts missing from tract geometry.",
+              length(readiness$set_differences$missing_scored_in_geom),
+              length(readiness$set_differences$missing_geom_in_scored),
+              length(readiness$set_differences$missing_component_in_geom)
+            )
+          )
+
+          list(kind = "skipped", skipped = skipped_tbl)
+        } else {
+          products <- list(
+            profile = assessment$profile,
+            scoring_inputs = assessment$scoring_inputs,
+            zone_inputs_bundle = assessment$zone_inputs_bundle,
+            contiguity_products = build_contiguity_zone_products(assessment$zone_inputs_bundle$eligible_zone_inputs),
+            cluster_products = build_cluster_zone_products(assessment$zone_inputs_bundle$eligible_zone_inputs)
+          )
+          publication_tables <- build_zone_build_market_publication_tables(
+            zone_inputs = products$zone_inputs_bundle$eligible_zone_inputs,
+            contiguity_products = products$contiguity_products,
+            cluster_products = products$cluster_products,
+            profile = profile
+          )
+
+          list(
+            kind = "success",
+            value = list(
+              profile = profile,
+              publication_tables = publication_tables,
+              summary = tibble::tibble(
+                market_key = profile$market_key,
+                cbsa_code = profile$cbsa_code,
+                state_scope = format_state_scope(profile),
+                zone_input_candidates = nrow(publication_tables$zone_input_candidates),
+                contiguity_zone_components = nrow(publication_tables$contiguity_zone_components),
+                contiguity_zone_summary = nrow(publication_tables$contiguity_zone_summary),
+                contiguity_zone_geometries = nrow(publication_tables$contiguity_zone_geometries),
+                cluster_assignments = nrow(publication_tables$cluster_assignments),
+                cluster_zone_summary = nrow(publication_tables$cluster_zone_summary),
+                cluster_zone_geometries = nrow(publication_tables$cluster_zone_geometries)
+              )
+            )
+          )
+        }
+      },
+      error = function(e) list(kind = "error", error = e)
+    )
+
+    if (identical(result$kind, "success")) {
+      per_market[[length(per_market) + 1L]] <- result$value
+    } else if (identical(result$kind, "skipped")) {
+      skipped_markets[[length(skipped_markets) + 1L]] <- result$skipped
+    } else {
+      skipped_markets[[length(skipped_markets) + 1L]] <- tibble::tibble(
+        market_key = profile$market_key,
+        cbsa_code = profile$cbsa_code,
+        state_scope = format_state_scope(profile),
+        scored_rows = NA_integer_,
+        tract_sf_rows = NA_integer_,
+        cluster_seed_from_scored = NA_integer_,
+        cluster_seed_from_geom = NA_integer_,
+        missing_scored_in_geom = NA_integer_,
+        missing_geom_in_scored = NA_integer_,
+        missing_component_in_geom = NA_integer_,
+        reason = conditionMessage(result$error)
+      )
+    }
+  }
+
+  if (length(per_market) == 0) {
+    stop("No zone-build markets passed readiness checks.", call. = FALSE)
+  }
+
+  bind_named_tables <- function(table_name) {
+    dplyr::bind_rows(lapply(per_market, function(x) x$publication_tables[[table_name]]))
+  }
+
+  list(
+    profiles = profiles,
+    zone_input_candidates = bind_named_tables("zone_input_candidates"),
+    contiguity_zone_components = bind_named_tables("contiguity_zone_components"),
+    contiguity_zone_summary = bind_named_tables("contiguity_zone_summary"),
+    contiguity_zone_geometries = bind_named_tables("contiguity_zone_geometries"),
+    cluster_assignments = bind_named_tables("cluster_assignments"),
+    cluster_zone_summary = bind_named_tables("cluster_zone_summary"),
+    cluster_zone_geometries = bind_named_tables("cluster_zone_geometries"),
+    market_summary = dplyr::bind_rows(lapply(per_market, `[[`, "summary")),
+    skipped_markets = if (length(skipped_markets) > 0) dplyr::bind_rows(skipped_markets) else tibble::tibble(
+      market_key = character(),
+      cbsa_code = character(),
+      state_scope = character(),
+      scored_rows = integer(),
+      tract_sf_rows = integer(),
+      cluster_seed_from_scored = integer(),
+      cluster_seed_from_geom = integer(),
+      missing_scored_in_geom = integer(),
+      missing_geom_in_scored = integer(),
+      missing_component_in_geom = integer(),
+      reason = character()
+    )
+  )
+}
+
+build_zone_build_qa <- function(publications, qa_summary) {
+  contiguity_row_match <- nrow(publications$contiguity_zone_summary) == nrow(publications$contiguity_zone_geometries)
+  cluster_row_match <- nrow(publications$cluster_zone_summary) == nrow(publications$cluster_zone_geometries)
+  zone_input_component_row_match <- nrow(publications$zone_input_candidates) == nrow(publications$contiguity_zone_components)
+  zone_input_cluster_row_match <- nrow(publications$zone_input_candidates) == nrow(publications$cluster_assignments)
+
+  contiguity_market_match <- dplyr::n_distinct(publications$contiguity_zone_summary$market_key) ==
+    dplyr::n_distinct(publications$contiguity_zone_geometries$market_key)
+  cluster_market_match <- dplyr::n_distinct(publications$cluster_zone_summary$market_key) ==
+    dplyr::n_distinct(publications$cluster_zone_geometries$market_key)
+
+  validation_results <- dplyr::bind_rows(
+    make_validation_row(
+      "zone_build_multi_market_present",
+      dataset = "zones.zone_input_candidates",
+      metric_value = qa_summary$published_market_count,
+      pass = isTRUE(qa_summary$multi_market_present),
+      details = paste("Published markets:", qa_summary$published_market_count)
+    ),
+    make_validation_row(
+      "zone_build_target_states_present",
+      dataset = "zones.zone_input_candidates",
+      metric_value = length(unique(publications$zone_input_candidates$state_scope)),
+      pass = isTRUE(qa_summary$target_states_present),
+      details = paste("Published state scopes:", paste(sort(unique(publications$zone_input_candidates$state_scope)), collapse = ", "))
+    ),
+    make_validation_row(
+      "zone_build_published_plus_skipped_matches_expected",
+      dataset = "zones.zone_input_candidates",
+      metric_value = qa_summary$published_market_count + qa_summary$skipped_market_count,
+      pass = (qa_summary$published_market_count + qa_summary$skipped_market_count) == qa_summary$expected_market_count,
+      details = paste("Published + skipped markets:", qa_summary$published_market_count + qa_summary$skipped_market_count, "Expected:", qa_summary$expected_market_count)
+    ),
+    make_validation_row(
+      "zone_build_skipped_markets",
+      severity = "warning",
+      dataset = "qa.zone_build_skipped_markets",
+      metric_value = qa_summary$skipped_market_count,
+      pass = qa_summary$skipped_market_count == 0,
+      details = if (qa_summary$skipped_market_count == 0) {
+        "No skipped markets."
+      } else {
+        paste("Skipped markets:", paste(qa_summary$skipped_markets$market_key, collapse = ", "))
+      }
+    ),
+    make_validation_row(
+      "zone_input_candidates_unique_market_tract",
+      dataset = "zones.zone_input_candidates",
+      metric_value = qa_summary$zone_input_key_dupes,
+      pass = qa_summary$zone_input_key_dupes == 0,
+      details = paste("Duplicate (market_key, tract_geoid) rows:", qa_summary$zone_input_key_dupes)
+    ),
+    make_validation_row(
+      "contiguity_zone_components_unique_market_tract",
+      dataset = "zones.contiguity_zone_components",
+      metric_value = qa_summary$contiguity_component_key_dupes,
+      pass = qa_summary$contiguity_component_key_dupes == 0,
+      details = paste("Duplicate (market_key, tract_geoid) rows:", qa_summary$contiguity_component_key_dupes)
+    ),
+    make_validation_row(
+      "contiguity_zone_summary_unique_market_zone",
+      dataset = "zones.contiguity_zone_summary",
+      metric_value = qa_summary$contiguity_summary_key_dupes,
+      pass = qa_summary$contiguity_summary_key_dupes == 0,
+      details = paste("Duplicate (market_key, zone_id) rows:", qa_summary$contiguity_summary_key_dupes)
+    ),
+    make_validation_row(
+      "contiguity_zone_geometries_unique_market_zone",
+      dataset = "zones.contiguity_zone_geometries",
+      metric_value = qa_summary$contiguity_geometry_key_dupes,
+      pass = qa_summary$contiguity_geometry_key_dupes == 0,
+      details = paste("Duplicate (market_key, zone_id) rows:", qa_summary$contiguity_geometry_key_dupes)
+    ),
+    make_validation_row(
+      "cluster_assignments_unique_market_tract",
+      dataset = "zones.cluster_assignments",
+      metric_value = qa_summary$cluster_assignment_key_dupes,
+      pass = qa_summary$cluster_assignment_key_dupes == 0,
+      details = paste("Duplicate (market_key, tract_geoid) rows:", qa_summary$cluster_assignment_key_dupes)
+    ),
+    make_validation_row(
+      "cluster_zone_summary_unique_market_cluster",
+      dataset = "zones.cluster_zone_summary",
+      metric_value = qa_summary$cluster_summary_key_dupes,
+      pass = qa_summary$cluster_summary_key_dupes == 0,
+      details = paste("Duplicate (market_key, cluster_id) rows:", qa_summary$cluster_summary_key_dupes)
+    ),
+    make_validation_row(
+      "cluster_zone_geometries_unique_market_cluster",
+      dataset = "zones.cluster_zone_geometries",
+      metric_value = qa_summary$cluster_geometry_key_dupes,
+      pass = qa_summary$cluster_geometry_key_dupes == 0,
+      details = paste("Duplicate (market_key, cluster_id) rows:", qa_summary$cluster_geometry_key_dupes)
+    ),
+    make_validation_row(
+      "zone_build_one_cbsa_per_market",
+      dataset = "zones.zone_input_candidates",
+      metric_value = sum(!qa_summary$one_cbsa_per_market),
+      pass = isTRUE(qa_summary$one_cbsa_per_market),
+      details = paste("One cbsa_code per market:", qa_summary$one_cbsa_per_market)
+    ),
+    make_validation_row(
+      "zone_input_candidates_matches_contiguity_components_rows",
+      dataset = "zones.zone_input_candidates,zones.contiguity_zone_components",
+      metric_value = abs(nrow(publications$zone_input_candidates) - nrow(publications$contiguity_zone_components)),
+      pass = zone_input_component_row_match,
+      details = paste("Zone input rows:", nrow(publications$zone_input_candidates), "Contiguity component rows:", nrow(publications$contiguity_zone_components))
+    ),
+    make_validation_row(
+      "zone_input_candidates_matches_cluster_assignments_rows",
+      dataset = "zones.zone_input_candidates,zones.cluster_assignments",
+      metric_value = abs(nrow(publications$zone_input_candidates) - nrow(publications$cluster_assignments)),
+      pass = zone_input_cluster_row_match,
+      details = paste("Zone input rows:", nrow(publications$zone_input_candidates), "Cluster assignment rows:", nrow(publications$cluster_assignments))
+    ),
+    make_validation_row(
+      "contiguity_summary_geometry_row_match",
+      dataset = "zones.contiguity_zone_summary,zones.contiguity_zone_geometries",
+      metric_value = abs(nrow(publications$contiguity_zone_summary) - nrow(publications$contiguity_zone_geometries)),
+      pass = contiguity_row_match,
+      details = paste("Contiguity summary rows:", nrow(publications$contiguity_zone_summary), "Geometry rows:", nrow(publications$contiguity_zone_geometries))
+    ),
+    make_validation_row(
+      "cluster_summary_geometry_row_match",
+      dataset = "zones.cluster_zone_summary,zones.cluster_zone_geometries",
+      metric_value = abs(nrow(publications$cluster_zone_summary) - nrow(publications$cluster_zone_geometries)),
+      pass = cluster_row_match,
+      details = paste("Cluster summary rows:", nrow(publications$cluster_zone_summary), "Geometry rows:", nrow(publications$cluster_zone_geometries))
+    ),
+    make_validation_row(
+      "contiguity_summary_geometry_market_match",
+      dataset = "zones.contiguity_zone_summary,zones.contiguity_zone_geometries",
+      metric_value = abs(dplyr::n_distinct(publications$contiguity_zone_summary$market_key) - dplyr::n_distinct(publications$contiguity_zone_geometries$market_key)),
+      pass = contiguity_market_match,
+      details = paste("Contiguity summary markets:", dplyr::n_distinct(publications$contiguity_zone_summary$market_key), "Geometry markets:", dplyr::n_distinct(publications$contiguity_zone_geometries$market_key))
+    ),
+    make_validation_row(
+      "cluster_summary_geometry_market_match",
+      dataset = "zones.cluster_zone_summary,zones.cluster_zone_geometries",
+      metric_value = abs(dplyr::n_distinct(publications$cluster_zone_summary$market_key) - dplyr::n_distinct(publications$cluster_zone_geometries$market_key)),
+      pass = cluster_market_match,
+      details = paste("Cluster summary markets:", dplyr::n_distinct(publications$cluster_zone_summary$market_key), "Geometry markets:", dplyr::n_distinct(publications$cluster_zone_geometries$market_key))
+    )
+  ) %>%
+    mutate(
+      build_source = "data_platform/layers/03_zone_build",
+      run_timestamp = as.character(Sys.time())
+    )
+
+  skipped_markets <- publications$skipped_markets %>%
+    mutate(
+      build_source = "data_platform/layers/03_zone_build",
+      run_timestamp = as.character(Sys.time())
+    )
+
+  list(
+    validation_results = validation_results,
+    skipped_markets = skipped_markets
+  )
+}
+
+validate_zone_build_layer_publications <- function(publications) {
+  distinct_market_count <- function(df) dplyr::n_distinct(df$market_key)
+  distinct_cbsa_count <- function(df) dplyr::n_distinct(df$cbsa_code)
+  duplicate_key_count <- function(df, key_cols) {
+    nrow(df) - dplyr::n_distinct(do.call(paste, c(df[key_cols], sep = "::")))
+  }
+
+  zone_input_market_cbsa_counts <- publications$zone_input_candidates %>%
+    dplyr::distinct(market_key, cbsa_code) %>%
+    dplyr::count(market_key, name = "cbsa_count")
+
+  expected_market_count <- length(publications$profiles)
+  skipped_market_count <- nrow(publications$skipped_markets)
+  published_states <- sort(unique(publications$zone_input_candidates$state_scope))
+  target_states_present <- all(ZONE_BUILD_TARGET_STATES %in% published_states)
+
+  list(
+    expected_market_count = expected_market_count,
+    published_market_count = distinct_market_count(publications$zone_input_candidates),
+    skipped_market_count = skipped_market_count,
+    zone_input_market_count = distinct_market_count(publications$zone_input_candidates),
+    zone_input_cbsa_count = distinct_cbsa_count(publications$zone_input_candidates),
+    contiguity_summary_market_count = distinct_market_count(publications$contiguity_zone_summary),
+    cluster_summary_market_count = distinct_market_count(publications$cluster_zone_summary),
+    zone_input_key_dupes = duplicate_key_count(publications$zone_input_candidates, c("market_key", "tract_geoid")),
+    contiguity_component_key_dupes = duplicate_key_count(publications$contiguity_zone_components, c("market_key", "tract_geoid")),
+    contiguity_summary_key_dupes = duplicate_key_count(publications$contiguity_zone_summary, c("market_key", "zone_id")),
+    contiguity_geometry_key_dupes = duplicate_key_count(publications$contiguity_zone_geometries, c("market_key", "zone_id")),
+    cluster_assignment_key_dupes = duplicate_key_count(publications$cluster_assignments, c("market_key", "tract_geoid")),
+    cluster_summary_key_dupes = duplicate_key_count(publications$cluster_zone_summary, c("market_key", "cluster_id")),
+    cluster_geometry_key_dupes = duplicate_key_count(publications$cluster_zone_geometries, c("market_key", "cluster_id")),
+    one_cbsa_per_market = all(zone_input_market_cbsa_counts$cbsa_count == 1),
+    multi_market_present = distinct_market_count(publications$zone_input_candidates) > 1,
+    target_states_present = target_states_present,
+    skipped_markets = publications$skipped_markets,
+    pass = distinct_market_count(publications$zone_input_candidates) > 1 &&
+      distinct_market_count(publications$contiguity_zone_summary) == distinct_market_count(publications$zone_input_candidates) &&
+      distinct_market_count(publications$cluster_zone_summary) == distinct_market_count(publications$zone_input_candidates) &&
+      duplicate_key_count(publications$zone_input_candidates, c("market_key", "tract_geoid")) == 0 &&
+      duplicate_key_count(publications$contiguity_zone_components, c("market_key", "tract_geoid")) == 0 &&
+      duplicate_key_count(publications$contiguity_zone_summary, c("market_key", "zone_id")) == 0 &&
+      duplicate_key_count(publications$contiguity_zone_geometries, c("market_key", "zone_id")) == 0 &&
+      duplicate_key_count(publications$cluster_assignments, c("market_key", "tract_geoid")) == 0 &&
+      duplicate_key_count(publications$cluster_zone_summary, c("market_key", "cluster_id")) == 0 &&
+      duplicate_key_count(publications$cluster_zone_geometries, c("market_key", "cluster_id")) == 0 &&
+      all(zone_input_market_cbsa_counts$cbsa_count == 1) &&
+      target_states_present
+  )
+}
+
+publish_zone_build_layer_publications <- function(con, publications) {
+  ensure_rof_duckdb_schemas(con)
+  qa_summary <- validate_zone_build_layer_publications(publications)
+  qa_outputs <- build_zone_build_qa(publications, qa_summary)
+
+  write_duckdb_table(con, "zones", "zone_input_candidates", publications$zone_input_candidates, overwrite = TRUE)
+  write_duckdb_table(con, "zones", "contiguity_zone_components", publications$contiguity_zone_components, overwrite = TRUE)
+  write_duckdb_table(con, "zones", "contiguity_zone_summary", publications$contiguity_zone_summary, overwrite = TRUE)
+  write_duckdb_table(con, "zones", "contiguity_zone_geometries", publications$contiguity_zone_geometries, overwrite = TRUE)
+  write_duckdb_table(con, "zones", "cluster_assignments", publications$cluster_assignments, overwrite = TRUE)
+  write_duckdb_table(con, "zones", "cluster_zone_summary", publications$cluster_zone_summary, overwrite = TRUE)
+  write_duckdb_table(con, "zones", "cluster_zone_geometries", publications$cluster_zone_geometries, overwrite = TRUE)
+  write_duckdb_table(con, "qa", "zone_build_validation_results", qa_outputs$validation_results, overwrite = TRUE)
+  write_duckdb_table(con, "qa", "zone_build_skipped_markets", qa_outputs$skipped_markets, overwrite = TRUE)
+
+  invisible(
+    list(
+      zone_input_candidates = nrow(publications$zone_input_candidates),
+      contiguity_zone_summary = nrow(publications$contiguity_zone_summary),
+      cluster_zone_summary = nrow(publications$cluster_zone_summary),
+      markets = dplyr::n_distinct(publications$zone_input_candidates$market_key),
+      cbsas = dplyr::n_distinct(publications$zone_input_candidates$cbsa_code),
+      qa_validation_results = nrow(qa_outputs$validation_results),
+      qa_skipped_markets = nrow(qa_outputs$skipped_markets)
     )
   )
 }

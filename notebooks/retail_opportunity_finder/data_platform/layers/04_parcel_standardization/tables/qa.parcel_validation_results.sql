@@ -1,0 +1,6 @@
+-- Layer 04 organizational companion for `qa.parcel_validation_results`.
+-- Current managed execution path is procedural R:
+-- `tables/qa.parcel_validation_results.R`
+--
+-- This table composes multiple QA checks across several Layer 04 products,
+-- so it remains R-managed in this organizational extraction.

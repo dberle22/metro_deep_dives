@@ -1,0 +1,7 @@
+-- Layer 04 organizational companion for `parcel.parcel_join_qa`.
+-- Current managed execution path is procedural R:
+-- `tables/archive/parcel.parcel_join_qa.R`
+--
+-- Why SQL is not the active build path yet:
+-- - the table bridges a disk artifact (`parcel_geometry_join_qa_county_summary.rds`)
+-- - the current logic depends on R-side file reads before joining market counties

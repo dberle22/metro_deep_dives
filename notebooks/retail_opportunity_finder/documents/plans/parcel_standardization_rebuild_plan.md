@@ -1,7 +1,7 @@
 # Parcel Standardization Rebuild Plan
 
 Status: completed and superseded by the working manual county ETL in
-`sections/05_parcels/parcel_standardization/parcel_etl_manual_county_v2.R`.
+`data_platform/layers/04_parcel_standardization/state_scripts/fl_parcel_etl_manual_county.R`.
 
 ## Purpose
 
@@ -32,7 +32,7 @@ with Section 05 and DuckDB publish.
 ## Final Working Pattern
 
 ```text
-set one county in parcel_etl_manual_county_v2.R
+set one county in fl_parcel_etl_manual_county.R
   -> read and clean one county tabular file
   -> write county tabular rows to rof_parcel.parcel_tabular_clean
   -> read and trim one county geometry file
@@ -45,7 +45,7 @@ set one county in parcel_etl_manual_county_v2.R
 
 Kept:
 
-- `sections/05_parcels/parcel_standardization/parcel_etl_manual_county_v2.R`
+- `data_platform/layers/04_parcel_standardization/state_scripts/fl_parcel_etl_manual_county.R`
 - `sections/05_parcels/parcel_standardization/fl_county_run_checklist.md`
 - `sections/05_parcels/parcel_standardization/README.md`
 
@@ -317,4 +317,4 @@ Mitigation:
 This plan is now a historical record of the rebuild. The working operational
 entrypoint is:
 
-- `sections/05_parcels/parcel_standardization/parcel_etl_manual_county_v2.R`
+- `data_platform/layers/04_parcel_standardization/state_scripts/fl_parcel_etl_manual_county.R`

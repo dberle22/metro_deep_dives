@@ -1,0 +1,6 @@
+-- Layer 04 organizational companion for `qa.parcel_unmapped_use_codes`.
+-- Current managed execution path is procedural R:
+-- `tables/qa.parcel_unmapped_use_codes.R`
+--
+-- This is conceptually SQL-friendly, but remains in R in this organizational pass
+-- because the parent canonical parcel publication is still R-managed.

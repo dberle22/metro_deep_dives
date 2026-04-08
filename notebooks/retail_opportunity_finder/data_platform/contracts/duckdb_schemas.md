@@ -60,8 +60,10 @@ These are the standard metadata fields for the V2 platform transition. Not every
 - `foundation.market_county_geometry`
 - `foundation.market_cbsa_geometry`
 - `qa.foundation_validation_results`
+- `qa.foundation_geography_coverage`
 - `qa.foundation_null_rates`
 - `qa.ref_validation_results`
+- `qa.ref_geography_coverage`
 - `qa.ref_unmapped_land_use_codes`
 - `scoring.tract_scores`
 - `scoring.cluster_seed_tracts`

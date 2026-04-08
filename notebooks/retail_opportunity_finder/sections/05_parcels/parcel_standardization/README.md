@@ -2,9 +2,9 @@
 
 This folder now centers on one manual county ETL:
 
-- `parcel_etl_manual_county_v2.R`
+- `../../data_platform/layers/04_parcel_standardization/state_scripts/fl_parcel_etl_manual_county.R`
 
-That script is the working parcel standardization path for Section 05.
+That script is the working Florida parcel standardization path consumed by Section 05, but it is now owned by Layer 04.
 
 ## Sprint 3 Scope
 
@@ -18,7 +18,7 @@ have a stable, reviewable input contract.
 
 The current workflow is intentionally manual and county-first:
 
-1. set county config directly in `parcel_etl_manual_county_v2.R`
+1. set county config directly in `data_platform/layers/04_parcel_standardization/state_scripts/fl_parcel_etl_manual_county.R`
 2. read and clean one county tabular file
 3. write county tabular rows into `rof_parcel.parcel_tabular_clean`
 4. read and trim one county geometry file
@@ -78,8 +78,9 @@ intended county artifacts
 
 ## Active Files
 
-- `parcel_etl_manual_county_v2.R`
-  Manual county ETL used for current parcel onboarding and reruns.
+- `fl_parcel_etl_manual_county.R`
+  Lives in `data_platform/layers/04_parcel_standardization/state_scripts/fl_parcel_etl_manual_county.R`.
+  Manual Florida county ETL used for current parcel onboarding and reruns.
 
 - `fl_county_run_checklist.md`
   Florida county completion checklist for the current manual workflow.
@@ -109,6 +110,6 @@ QA on disk:
 - Geometry duplicates are preserved in the current workflow.
 - County geometry is stored for spatial analysis and plotting, not in DuckDB.
 - If a county has problematic geometry, use `repair_invalid_geom <- TRUE` in
-  `parcel_etl_manual_county_v2.R` only when needed.
+  `fl_parcel_etl_manual_county.R` only when needed.
 - Before running Section 05, confirm the parcel standardized root, manifest, and
 county analysis artifacts are aligned for the target manual refresh set.

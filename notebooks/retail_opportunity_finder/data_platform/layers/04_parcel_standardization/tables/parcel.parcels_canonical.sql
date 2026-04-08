@@ -1,0 +1,8 @@
+-- Layer 04 organizational companion for `parcel.parcels_canonical`.
+-- Current managed execution path is procedural R:
+-- `tables/parcel.parcels_canonical.R`
+--
+-- Why SQL is not the active build path yet:
+-- - county-name normalization and fallback joins are procedural
+-- - several source type coercions are handled inline in R
+-- - this pass is organizational only and does not change runtime behavior

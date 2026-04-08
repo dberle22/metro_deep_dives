@@ -99,12 +99,12 @@ read_market_parcel_join_qa <- function(con, profile = get_market_profile()) {
 }
 
 read_market_tract_geometry <- function(con, profile = get_market_profile()) {
-  market_key_sql <- DBI::dbQuoteString(con, profile$market_key)
+  cbsa_code_sql <- DBI::dbQuoteString(con, profile$cbsa_code)
   tract_tbl <- DBI::dbGetQuery(
     con,
     paste0(
       "SELECT * FROM foundation.market_tract_geometry ",
-      "WHERE market_key = ", market_key_sql, " ",
+      "WHERE cbsa_code = ", cbsa_code_sql, " ",
       "ORDER BY tract_geoid"
     )
   )

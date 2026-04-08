@@ -1,0 +1,7 @@
+-- Layer 04 organizational companion for `parcel.parcel_lineage`.
+-- Current managed execution path is procedural R:
+-- `tables/parcel.parcel_lineage.R`
+--
+-- Why SQL is not the active build path yet:
+-- - lineage merges DuckDB tables with disk-derived QA lineage
+-- - current implementation relies on R-side joins and fallback coalescing

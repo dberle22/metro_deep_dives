@@ -24,7 +24,7 @@ This is the first-pass lineage map for the ROF V2 transition.
 
 ## Foundation Layer
 - `foundation.cbsa_features`
-  - source: `data_platform/layers/01_foundation_features/tables/cbsa_features/build.sql`
+  - source: `data_platform/layers/01_foundation_features/tables/foundation.cbsa_features.sql`
   - serving boundary: published as `foundation.cbsa_features` in DuckDB
   - current downstream consumer: Section 02 via foundation-table reads when available
 - `foundation.tract_features`
@@ -87,13 +87,13 @@ During this slice, Section 03 and Section 04 still emit `section_*` artifacts fo
   - sources: `rof_parcel.parcel_tabular_clean`, `ref.market_county_membership`
   - downstream consumers: Section 05, future market serving prep
 - `parcel.parcel_join_qa`
-  - sources: `parcel_geometry_join_qa_county_summary.rds`, `ref.market_county_membership`
+  - sources: compatibility projection from `parcel.parcel_lineage`
   - downstream consumers: Section 05 readiness checks, parcel QA review
 - `parcel.parcel_lineage`
-  - sources: `parcel.parcel_join_qa`, `rof_parcel.parcel_county_load_log`, `parcel.parcels_canonical`
+  - sources: `ref.market_county_membership`, `parcel_geometry_join_qa_county_summary.rds`, `rof_parcel.parcel_county_load_log`, `parcel.parcels_canonical`
   - downstream consumers: QA review, release operations, county troubleshooting
 - `parcel.retail_parcels`
-  - sources: `parcel.parcels_canonical`, `ref.land_use_mapping`
+  - sources: compatibility subset of `parcel.parcels_canonical`
   - downstream consumers: Section 05 retail intensity and shortlist prep
 - `qa.parcel_validation_results`
   - sources: `parcel.*` tables and market county coverage checks

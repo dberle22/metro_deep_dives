@@ -1,0 +1,7 @@
+-- Layer 04 organizational companion for `parcel.retail_parcels`.
+-- Current managed execution path is procedural R:
+-- `tables/archive/parcel.retail_parcels.R`
+--
+-- Why SQL is not the active build path yet:
+-- - this table is currently a filtered subset of the classified canonical parcel table
+-- - the parent canonical build is still managed in R

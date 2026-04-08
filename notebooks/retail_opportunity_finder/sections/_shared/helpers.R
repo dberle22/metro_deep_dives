@@ -74,8 +74,10 @@ unsupported_geometry_source_message <- function(profile = get_market_profile(), 
   glue(
     "Unsupported {geometry_type} geometry source for market '{profile$market_key}' ",
     "(cbsa_code={profile$cbsa_code}, state_scope={states}). ",
-    "Sprint 3 only supports tract geometry for state_scope values: ",
-    "{paste(supported_states, collapse = ', ')}."
+    "The legacy tract geometry adapter only supports single-state scope values: ",
+    "{paste(supported_states, collapse = ', ')}. ",
+    "Managed ROF consumers should prefer foundation geometry tables or the ",
+    "upstream national tract source once metro_deep_dive.geo.tracts_all_us is materialized."
   )
 }
 

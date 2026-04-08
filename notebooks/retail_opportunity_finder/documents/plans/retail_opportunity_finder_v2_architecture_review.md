@@ -111,7 +111,7 @@ The notebook should not be the primary owner of clustering logic once V2 archite
 Standardize county parcel inputs into a canonical parcel layer before the notebook runs.
 
 ### Current build
-- The manual county ETL writes cleaned county outputs, geometry artifacts, and QA artifacts in [parcel_etl_manual_county_v2.R].
+- The manual county ETL writes cleaned county outputs, geometry artifacts, and QA artifacts in [data_platform/layers/04_parcel_standardization/state_scripts/fl_parcel_etl_manual_county.R].
 - Section 05 still reads county analysis RDS files, combines them into `parcels_raw`, then derives `parcels_canonical` inside [section_05_build.R].
 - Section 05 still depends on a retail land-use mapping CSV artifact and classifies parcels at notebook runtime.
 

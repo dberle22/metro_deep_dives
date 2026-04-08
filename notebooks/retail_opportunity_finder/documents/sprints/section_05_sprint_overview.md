@@ -104,7 +104,7 @@ Canonical shared reference: `notebooks/retail_opportunity_finder/sections/_share
 
 ### Step 2 - Parcel source ingestion and normalization
 - Run the manual county parcel ETL:
-  - `parcel_standardization/parcel_etl_manual_county_v2.R`
+  - `../../data_platform/layers/04_parcel_standardization/state_scripts/fl_parcel_etl_manual_county.R`
 - Load standardized outputs from:
   - DuckDB table `rof_parcel.parcel_tabular_clean`
   - county geometry `.rds` files under `property_taxes/parcel_geom/<state>/`

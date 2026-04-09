@@ -74,8 +74,10 @@ unsupported_geometry_source_message <- function(profile = get_market_profile(), 
   glue(
     "Unsupported {geometry_type} geometry source for market '{profile$market_key}' ",
     "(cbsa_code={profile$cbsa_code}, state_scope={states}). ",
-    "Sprint 3 only supports tract geometry for state_scope values: ",
-    "{paste(supported_states, collapse = ', ')}."
+    "The legacy tract geometry adapter only supports single-state scope values: ",
+    "{paste(supported_states, collapse = ', ')}. ",
+    "Managed ROF consumers should prefer foundation geometry tables or the ",
+    "upstream national tract source once metro_deep_dive.geo.tracts_all_us is materialized."
   )
 }
 
@@ -230,7 +232,14 @@ market_label <- function(name, profile = get_market_profile()) {
 
 resolve_market_output_dir <- function(section_id, key = ACTIVE_MARKET_KEY, subdir = NULL) {
   market_context <- get_market_context(key)
-  output_dir <- file.path(SECTION_OUTPUT_ROOT, section_id, "outputs", market_context$market_key)
+
+  base_output_root <- if (identical(Sys.getenv("ROF_OUTPUT_MODE", unset = ""), "notebook_build")) {
+    "notebooks/retail_opportunity_finder/notebook_build/sections"
+  } else {
+    SECTION_OUTPUT_ROOT
+  }
+
+  output_dir <- file.path(base_output_root, section_id, "outputs", market_context$market_key)
 
   if (!is.null(subdir) && nzchar(subdir)) {
     output_dir <- file.path(output_dir, subdir)
@@ -270,14 +279,9 @@ read_artifact_path <- function(section_id, artifact_name, ext = "rds", key = ACT
     return(market_path)
   }
 
-  legacy_path <- resolve_legacy_output_path(section_id, artifact_name, ext = ext, subdir = subdir)
-  if (file.exists(legacy_path)) {
-    return(legacy_path)
-  }
-
   stop(
     glue(
-      "Artifact not found for section '{section_id}': looked for '{market_path}' and legacy '{legacy_path}'."
+      "Artifact not found for section '{section_id}': looked for '{market_path}'."
     ),
     call. = FALSE
   )

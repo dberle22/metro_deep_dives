@@ -188,7 +188,7 @@ One row per `parcel_uid`.
 | `parcel_id` | Source parcel identifier. | External traceability. |
 | `alt_key` | Alternate parcel key from source. | Backup linkage field. |
 | `join_key` | Standardized parcel join key. | Key field for county geometry joins. |
-| `census_block_id` | Block GEOID where available. | Enables tract derivation without geometry in some cases. |
+| `census_block_id` | Source census geography key as provided by the parcel source. | In current Florida parcel data this often behaves like a tract-prefixed key rather than a full 15-digit Census block GEOID. |
 | `land_use_code` | Standardized county land-use code. | Basis for retail classification. |
 | `owner_name` | Owner name from parcel tabular data. | Parcel review context. |
 | `owner_addr` | Owner mailing address. | Parcel review context. |
@@ -483,17 +483,17 @@ One row per retail `parcel_uid`.
 | `state_abbr` | State abbreviation. | Geographic context. |
 | `state_fips` | State FIPS. | Geographic context. |
 | `join_key` | Standardized parcel join key. | Source/geometry compatibility. |
-| `census_block_id` | Source block GEOID where available. | Allows tract derivation without geometry when block is present. |
+| `census_block_id` | Source census geography key where available. | Layer 05 currently derives tract candidates by normalizing to digits and validating the first 11 digits against tract geography. |
 | `tract_geoid` | Assigned tract GEOID. | The main analytic bridge into tract and zone products. |
-| `assignment_method` | How the tract was assigned, such as block-derived or spatial. | Tells us whether the assignment came from a key-based shortcut or geometry operation. |
+| `assignment_method` | How the tract was assigned, currently normalized tract-prefix matching or unassigned. | Tells us whether the assignment came from validated tabular geography rather than geometry operations. |
 | `assignment_status` | Assignment result, usually `assigned` or unassigned. | QA and coverage tracking. |
 | `parcel_area_sqmi` | Parcel area in square miles. | Needed for tract retail area aggregation. |
 | `build_source` | Build provenance. | Audit metadata. |
 | `run_timestamp` | Build timestamp. | Audit metadata. |
 
 ### Core logic summary
-- Prefer tract derivation from 15-digit `census_block_id` where possible by taking the first 11 digits.
-- Fall back to spatial assignment when block-based tract derivation is unavailable.
+- Normalize `census_block_id` to digits and use the first 11 digits as a tract candidate when present.
+- Validate the tract candidate against `foundation.market_tract_geometry` for the parcel's market geography.
 - Persist assignment outcome so downstream consumers do not repeat this work.
 
 ## 11. `serving.parcel_shortlist_summary`
@@ -636,13 +636,13 @@ Governed translation layer from raw parcel land-use codes into ROF-friendly reta
 ### `foundation.market_tract_geometry`
 
 #### What this table is doing for us
-Market-scoped tract geometry service published in a DuckDB-friendly `geom_wkt` form so downstream layers can rebuild `sf` objects without querying raw geometry sources directly.
+National CBSA-partitioned tract geometry service published in a DuckDB-friendly `geom_wkt` form so downstream layers can rebuild `sf` objects without querying raw geometry sources directly.
 
 #### Important columns
 
 | Column | Meaning | Why it matters |
 | --- | --- | --- |
-| `market_key`, `cbsa_code`, `state_scope` | Market metadata. | Market-aware geometry serving. |
+| `cbsa_code` | CBSA identifier for the geometry slice. | Lets downstream consumers filter tract geometry to a target metro. |
 | `tract_geoid` | Tract GEOID. | Primary join key to tract features and scores. |
 | `county_geoid`, `state_fips` | Geography bridge columns. | Spatial joins and summaries. |
 | `geom_wkt` | WKT geometry payload. | Reconstructs tract polygons in downstream R. |
@@ -651,13 +651,13 @@ Market-scoped tract geometry service published in a DuckDB-friendly `geom_wkt` f
 ### `foundation.market_county_geometry`
 
 #### What this table is doing for us
-County boundary geometry table for notebook outlines and county-scoped map context.
+National CBSA-partitioned county boundary geometry table for outlines and county-scoped map context.
 
 #### Important columns
 
 | Column | Meaning | Why it matters |
 | --- | --- | --- |
-| `market_key`, `cbsa_code`, `state_scope` | Market metadata. | Market-aware serving. |
+| `cbsa_code` | CBSA identifier for the geometry slice. | Lets downstream consumers filter county geometry to a target metro. |
 | `county_geoid`, `county_name`, `state_fips` | County identity. | Map labeling and joins. |
 | `geom_wkt` | County boundary geometry. | Rebuilds county polygons downstream. |
 | `build_source`, `run_timestamp` | Audit metadata. | Lineage. |
@@ -665,13 +665,13 @@ County boundary geometry table for notebook outlines and county-scoped map conte
 ### `foundation.market_cbsa_geometry`
 
 #### What this table is doing for us
-CBSA boundary geometry service for market outline display and high-level map framing.
+National CBSA boundary geometry service for outline display and high-level map framing.
 
 #### Important columns
 
 | Column | Meaning | Why it matters |
 | --- | --- | --- |
-| `market_key`, `cbsa_code`, `state_scope` | Market metadata. | Market-aware serving. |
+| `cbsa_code` | CBSA identifier. | Primary key for selecting a target metro boundary. |
 | `cbsa_name` | Human-readable CBSA label. | Display context. |
 | `geom_wkt` | CBSA boundary geometry. | Rebuilds market outline downstream. |
 | `build_source`, `run_timestamp` | Audit metadata. | Lineage. |
@@ -970,7 +970,7 @@ This appendix classifies fields by where they come from and what kind of transfo
 | Columns | Provenance class | Notes |
 | --- | --- | --- |
 | `cbsa_code`, `cbsa_name`, `cbsa_type`, `primary_state_abbr`, `land_area_sq_mi`, `state_fips`, `census_region`, `census_division`, `year`, `pop_total`, `pop_growth_3yr`, `pop_growth_5yr`, `median_gross_rent`, `median_home_value`, `pct_commute_wfh`, `mean_travel_time`, `bps_total_units`, `bps_units_3yr_avg` | `raw_source` | Sourced from CBSA geometry, demographic, housing, transport, and BPS inputs via SQL. |
-| `commute_intensity_b`, `bps_units_per_1k`, `bps_units_per_1k_3yr_avg`, all national/regional rank and percentile fields | `derived_analytic` | Computed in `data_platform/layers/01_foundation_features/tables/cbsa_features/build.sql` for benchmarking and notebook context. |
+| `commute_intensity_b`, `bps_units_per_1k`, `bps_units_per_1k_3yr_avg`, all national/regional rank and percentile fields | `derived_analytic` | Computed in `data_platform/layers/01_foundation_features/tables/foundation.cbsa_features.sql` for benchmarking and notebook context. |
 | `market_key`, `state_scope` | `reference_enriched` | Added at publish time from market profile metadata. |
 | `build_source`, `run_timestamp` | `qa_lineage_metadata` | Publication metadata. |
 

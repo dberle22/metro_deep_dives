@@ -16,5 +16,6 @@ message(
   publish_counts$tract_dim, " tract dim rows, ",
   publish_counts$land_use_mapping, " land use mapping rows, ",
   publish_counts$qa_validation_results, " QA validation rows, ",
+  publish_counts$qa_geography_coverage, " geography coverage rows, ",
   publish_counts$qa_unmapped_land_use_codes, " unmapped candidate land-use rows."
 )

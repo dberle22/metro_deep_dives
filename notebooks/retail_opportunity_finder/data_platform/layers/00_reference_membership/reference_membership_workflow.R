@@ -236,6 +236,25 @@ build_unmapped_land_use_codes <- function(ref_products, candidates_path = LAND_U
     arrange(land_use_code)
 }
 
+build_ref_geography_coverage <- function(ref_products) {
+  ref_products$tract_dim %>%
+    mutate(
+      state_fips = as.character(state_fips),
+      state_abbr = as.character(state_abbr)
+    ) %>%
+    group_by(state_fips, state_abbr) %>%
+    summarise(
+      tract_dim_rows = n(),
+      county_rows = n_distinct(county_geoid),
+      .groups = "drop"
+    ) %>%
+    arrange(state_fips, state_abbr) %>%
+    mutate(
+      build_source = "data_platform/layers/00_reference_membership",
+      run_timestamp = as.character(Sys.time())
+    )
+}
+
 build_reference_qa_checks <- function(ref_products) {
   market_profiles_unique <- validate_unique_key(ref_products$market_profiles, "market_key", "ref.market_profiles")
   county_dim_unique <- validate_unique_key(ref_products$county_dim, "county_geoid", "ref.county_dim")
@@ -260,8 +279,10 @@ build_reference_qa_checks <- function(ref_products) {
   invalid_tract_geoid_dim <- sum(!check_regex_match(ref_products$tract_dim$tract_geoid, "^[0-9]{11}$"))
   missing_market_keys <- sum(is.na(ref_products$market_county_membership$market_key) | !nzchar(ref_products$market_county_membership$market_key))
   missing_state_abbr <- sum(is.na(ref_products$market_county_membership$state_abbr) | !nzchar(ref_products$market_county_membership$state_abbr))
+  tract_dim_state_count <- dplyr::n_distinct(ref_products$tract_dim$state_abbr, na.rm = TRUE)
 
   unmapped_land_use_codes <- build_unmapped_land_use_codes(ref_products)
+  geography_coverage <- build_ref_geography_coverage(ref_products)
 
   validation_results <- dplyr::bind_rows(
     make_validation_row(
@@ -321,6 +342,14 @@ build_reference_qa_checks <- function(ref_products) {
       details = paste("Invalid tract_geoid rows:", invalid_tract_geoid_dim)
     ),
     make_validation_row(
+      "tract_dim_national_state_coverage",
+      severity = "warn",
+      dataset = "ref.tract_dim",
+      metric_value = tract_dim_state_count,
+      pass = tract_dim_state_count >= 51,
+      details = paste("Distinct tract_dim states present:", tract_dim_state_count)
+    ),
+    make_validation_row(
       "market_county_membership_missing_market_key",
       dataset = "ref.market_county_membership",
       metric_value = missing_market_keys,
@@ -356,6 +385,7 @@ build_reference_qa_checks <- function(ref_products) {
 
   list(
     validation_results = validation_results,
+    geography_coverage = geography_coverage,
     unmapped_land_use_codes = unmapped_land_use_codes,
     legacy_checks = list(
       market_profiles_unique = market_profiles_unique,
@@ -379,6 +409,7 @@ build_reference_membership_products <- function(con) {
   qa_outputs <- build_reference_qa_checks(products)
   products$qa_checks <- qa_outputs$legacy_checks
   products$qa_validation_results <- qa_outputs$validation_results
+  products$qa_geography_coverage <- qa_outputs$geography_coverage
   products$qa_unmapped_land_use_codes <- qa_outputs$unmapped_land_use_codes
   products
 }
@@ -393,6 +424,7 @@ publish_reference_membership_products <- function(con, products) {
   write_duckdb_table(con, "ref", "tract_dim", products$tract_dim, overwrite = TRUE)
   write_duckdb_table(con, "ref", "land_use_mapping", products$land_use_mapping, overwrite = TRUE)
   write_duckdb_table(con, "qa", "ref_validation_results", products$qa_validation_results, overwrite = TRUE)
+  write_duckdb_table(con, "qa", "ref_geography_coverage", products$qa_geography_coverage, overwrite = TRUE)
   write_duckdb_table(con, "qa", "ref_unmapped_land_use_codes", products$qa_unmapped_land_use_codes, overwrite = TRUE)
 
   invisible(
@@ -404,6 +436,7 @@ publish_reference_membership_products <- function(con, products) {
       tract_dim = nrow(products$tract_dim),
       land_use_mapping = nrow(products$land_use_mapping),
       qa_validation_results = nrow(products$qa_validation_results),
+      qa_geography_coverage = nrow(products$qa_geography_coverage),
       qa_unmapped_land_use_codes = nrow(products$qa_unmapped_land_use_codes)
     )
   )

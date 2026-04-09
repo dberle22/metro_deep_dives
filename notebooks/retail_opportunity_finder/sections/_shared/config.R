@@ -66,8 +66,11 @@ SQL_PATHS <- list(
   staging = list()
 )
 
-# Geometry source registry for Sprint 3.
-# County and CBSA boundary tables remain shared; tract geometry is state-scoped.
+# Geometry source registry for the legacy section geometry adapter.
+# County and CBSA boundary tables remain shared; tract geometry here is still
+# state-scoped compatibility infrastructure. Managed ROF consumers should prefer
+# foundation geometry tables, and upstream geography ETL is moving toward
+# metro_deep_dive.geo.tracts_all_us as the national tract source.
 GEOMETRY_SOURCE_REGISTRY <- list(
   cbsa_table = "metro_deep_dive.geo.cbsas",
   county_table = "metro_deep_dive.geo.counties",

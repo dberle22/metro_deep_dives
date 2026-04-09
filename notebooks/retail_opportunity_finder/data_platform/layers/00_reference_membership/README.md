@@ -10,6 +10,7 @@ This layer publishes source-backed reference tables used across the ROF V2 platf
 - `ref.tract_dim`
 - `ref.land_use_mapping`
 - `qa.ref_validation_results`
+- `qa.ref_geography_coverage`
 - `qa.ref_unmapped_land_use_codes`
 
 ## Current Decisions
@@ -22,4 +23,5 @@ This layer publishes source-backed reference tables used across the ROF V2 platf
 ## Notes
 - Reference tables are full-refresh and overwrite in place.
 - They are geometry-light dimensions and bridges intended to stabilize joins across layers.
+- `qa.ref_geography_coverage` now publishes tract counts by state so national backbone progress is visible in the reference layer itself.
 - QA outputs are published alongside the reference tables so downstream layers can review join readiness and mapping coverage.

@@ -28,7 +28,37 @@ dbExecute(con, "CREATE SCHEMA IF NOT EXISTS metro_deep_dive.geo;")
 # Set Vars 
 year <- 2024
 SQM_PER_SQMI <- 2589988.110336
-tract_states <- c("FL", "GA", "SC", "NC")
+
+resolve_tract_state_scope <- function(env_var = "ROF_TRACT_STATE_SCOPE") {
+  raw_value <- Sys.getenv(env_var, unset = "")
+  if (!nzchar(raw_value)) {
+    return(c(state.abb, "DC"))
+  }
+
+  states <- raw_value %>%
+    stringr::str_split(",") %>%
+    purrr::pluck(1) %>%
+    stringr::str_trim() %>%
+    toupper() %>%
+    unique()
+
+  valid_states <- c(state.abb, "DC")
+  invalid_states <- setdiff(states, valid_states)
+  if (length(invalid_states) > 0) {
+    stop(
+      sprintf(
+        "Invalid %s values: %s",
+        env_var,
+        paste(invalid_states, collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+
+  states
+}
+
+tract_states <- resolve_tract_state_scope()
 
 # ---- Helper: write sf -> duckdb with WKB + (optional) DuckDB geom column ----
 write_sf_duckdb <- function(con, sf_obj, fq_table, make_geom_col = TRUE) {
@@ -90,7 +120,10 @@ counties <- tigris::counties(cb = TRUE, year = year) %>%
 
 write_sf_duckdb(con, counties, "metro_deep_dive.geo.counties")
 
-## Tracts FL/GA/SC/NC ----
+## Tracts ----
+# Target table is metro_deep_dive.geo.tracts_all_us.
+# metro_deep_dive.geo.tracts_supported_states remains as a compatibility alias
+# until all downstream consumers stop referencing the older name.
 build_tract_geometries <- function(state_abbr, year, cb = TRUE) {
   tigris::tracts(state = state_abbr, cb = cb, year = year) %>%
     mutate(
@@ -122,8 +155,9 @@ for (state_abbr in tract_states) {
   write_sf_duckdb(con, tracts_by_state[[state_abbr]], tract_tables[[state_abbr]])
 }
 
-tracts_supported_states <- dplyr::bind_rows(tracts_by_state)
-write_sf_duckdb(con, tracts_supported_states, "metro_deep_dive.geo.tracts_supported_states")
+tracts_all_us <- dplyr::bind_rows(tracts_by_state)
+write_sf_duckdb(con, tracts_all_us, "metro_deep_dive.geo.tracts_all_us")
+write_sf_duckdb(con, tracts_all_us, "metro_deep_dive.geo.tracts_supported_states")
 
 # Validations ----
 print(dbGetQuery(con, "SELECT COUNT(*) n FROM metro_deep_dive.geo.states;"))
@@ -137,10 +171,11 @@ for (state_abbr in tract_states) {
   ))
 }
 
+print(dbGetQuery(con, "SELECT COUNT(*) n FROM metro_deep_dive.geo.tracts_all_us;"))
 print(dbGetQuery(con, "SELECT COUNT(*) n FROM metro_deep_dive.geo.tracts_supported_states;"))
 
 # Quick column checks
-print(dbGetQuery(con, "DESCRIBE metro_deep_dive.geo.tracts_supported_states;"))
+print(dbGetQuery(con, "DESCRIBE metro_deep_dive.geo.tracts_all_us;"))
 
 # Land area sanity (tracts)
 print(dbGetQuery(con, "
@@ -149,7 +184,7 @@ print(dbGetQuery(con, "
     MIN(land_area_sqmi) min_sqmi,
     MAX(land_area_sqmi) max_sqmi,
     AVG(land_area_sqmi) avg_sqmi
-  FROM metro_deep_dive.geo.tracts_supported_states;
+  FROM metro_deep_dive.geo.tracts_all_us;
 "))
 
 dbDisconnect(con, shutdown = TRUE)

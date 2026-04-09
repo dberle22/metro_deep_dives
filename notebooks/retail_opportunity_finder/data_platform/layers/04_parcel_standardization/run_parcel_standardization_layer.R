@@ -3,12 +3,12 @@ initialize_section_runtime()
 
 source("notebooks/retail_opportunity_finder/data_platform/layers/04_parcel_standardization/parcel_standardization_workflow.R")
 
-message(glue::glue("Running Layer 04 parcel standardization for market {ACTIVE_MARKET_KEY}"))
+message("Running Layer 04 parcel standardization for all parcel-backed markets")
 
 con <- connect_project_duckdb(read_only = FALSE)
 on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
 
-products <- build_parcel_standardization_products(con, profile = get_market_profile())
+products <- build_parcel_standardization_products(con)
 publish_counts <- publish_parcel_standardization_products(con, products)
 
 message(glue::glue(

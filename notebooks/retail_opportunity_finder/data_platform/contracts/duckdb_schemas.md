@@ -60,8 +60,10 @@ These are the standard metadata fields for the V2 platform transition. Not every
 - `foundation.market_county_geometry`
 - `foundation.market_cbsa_geometry`
 - `qa.foundation_validation_results`
+- `qa.foundation_geography_coverage`
 - `qa.foundation_null_rates`
 - `qa.ref_validation_results`
+- `qa.ref_geography_coverage`
 - `qa.ref_unmapped_land_use_codes`
 - `scoring.tract_scores`
 - `scoring.cluster_seed_tracts`
@@ -75,7 +77,7 @@ These are the standard metadata fields for the V2 platform transition. Not every
 - `parcel.parcels_canonical`
 - `parcel.parcel_join_qa`
 - `parcel.parcel_lineage`
-- `parcel.retail_parcels`
+- `parcel.retail_parcels` (DEPRECATED - use parcel.parcels_canonical with retail_flag = TRUE)
 - `qa.parcel_validation_results`
 - `qa.parcel_unmapped_use_codes`
 - parcel geometry continues to be served from existing `.RDS` files in this slice

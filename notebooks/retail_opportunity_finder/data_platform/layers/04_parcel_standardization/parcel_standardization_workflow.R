@@ -7,6 +7,28 @@ if (!file.exists(platform_helpers_path)) {
 }
 source(platform_helpers_path)
 
+table_asset_paths <- c(
+  "notebooks/retail_opportunity_finder/data_platform/layers/04_parcel_standardization/tables/parcel.parcels_canonical.R",
+  "notebooks/retail_opportunity_finder/data_platform/layers/04_parcel_standardization/tables/parcel.parcel_lineage.R",
+  "notebooks/retail_opportunity_finder/data_platform/layers/04_parcel_standardization/tables/qa.parcel_unmapped_use_codes.R",
+  "notebooks/retail_opportunity_finder/data_platform/layers/04_parcel_standardization/tables/qa.parcel_validation_results.R",
+  "notebooks/retail_opportunity_finder/data_platform/layers/04_parcel_standardization/tables/archive/parcel.parcel_join_qa.R",
+  "notebooks/retail_opportunity_finder/data_platform/layers/04_parcel_standardization/tables/archive/parcel.retail_parcels.R"
+)
+
+missing_table_assets <- table_asset_paths[!file.exists(table_asset_paths)]
+if (length(missing_table_assets) > 0) {
+  stop(
+    paste(
+      "Missing Layer 04 table asset file(s):",
+      paste(missing_table_assets, collapse = ", ")
+    ),
+    call. = FALSE
+  )
+}
+
+invisible(lapply(table_asset_paths, source))
+
 make_validation_row <- function(check_name, severity = "error", dataset = NA_character_, metric_value = NA_real_, pass = FALSE, details = NA_character_) {
   tibble::tibble(
     check_name = check_name,
@@ -54,14 +76,13 @@ extract_source_county_name_key <- function(x) {
   normalize_county_name_key(stem)
 }
 
-read_market_county_membership <- function(con, profile = get_market_profile()) {
+read_market_county_membership <- function(con) {
   DBI::dbGetQuery(
     con,
     paste0(
       "SELECT market_key, cbsa_code, county_geoid, county_name, state_fips, county_fips, state_abbr ",
       "FROM ref.market_county_membership ",
-      "WHERE market_key = ", DBI::dbQuoteString(con, profile$market_key), " ",
-      "ORDER BY county_geoid"
+      "ORDER BY market_key, county_geoid"
     )
   ) %>%
     mutate(
@@ -70,6 +91,36 @@ read_market_county_membership <- function(con, profile = get_market_profile()) {
       county_tag = derive_county_tag(county_fips),
       county_name_key = normalize_county_name_key(county_name)
     )
+}
+
+read_parcel_available_market_counties <- function(con) {
+  market_counties <- read_market_county_membership(con)
+
+  parcel_counties <- DBI::dbGetQuery(con, "
+    SELECT DISTINCT
+      upper(trim(state)) AS state_abbr,
+      county_geoid,
+      county_fips,
+      county_name
+    FROM rof_parcel.parcel_tabular_clean
+    WHERE state IS NOT NULL
+      AND county_name IS NOT NULL
+  ") %>%
+    as_tibble() %>%
+    mutate(
+      state_abbr = toupper(as.character(state_abbr)),
+      county_geoid = as.character(county_geoid),
+      county_fips = normalize_county_fips(county_fips),
+      county_name_key = normalize_county_name_key(county_name)
+    ) %>%
+    distinct(state_abbr, county_geoid, county_fips, county_name_key)
+
+  market_counties %>%
+    semi_join(
+      parcel_counties,
+      by = c("state_abbr", "county_geoid", "county_fips", "county_name_key")
+    ) %>%
+    arrange(market_key, county_geoid)
 }
 
 read_land_use_mapping <- function(con) {
@@ -172,411 +223,45 @@ read_county_load_log <- function(con, market_counties) {
   load_log %>%
     as_tibble() %>%
     mutate(
+      state_abbr = toupper(as.character(state)),
       county_fips = normalize_county_fips(dplyr::coalesce(county_fips, source_county_id)),
       county_code = normalize_county_code(county_fips),
       county_tag = dplyr::coalesce(as.character(county_tag), derive_county_tag(county_fips)),
       county_name_key = normalize_county_name_key(county_name)
     ) %>%
-    semi_join(market_counties %>% select(county_name_key), by = "county_name_key")
+    semi_join(
+      market_counties %>% select(state_abbr, county_name_key) %>% distinct(),
+      by = c("state_abbr", "county_name_key")
+    ) %>%
+    arrange(
+      dplyr::desc(load_completed_at),
+      dplyr::desc(generated_at),
+      dplyr::desc(ingest_run_id)
+    ) %>%
+    distinct(state_abbr, county_name_key, .keep_all = TRUE)
 }
 
-build_parcels_canonical <- function(con, profile = get_market_profile()) {
-  market_counties <- read_market_county_membership(con, profile = profile)
-
-  parcel_tabular <- query_market_parcel_tabular(con, market_counties) %>%
-    as_tibble() %>%
-    mutate(
-      state_abbr = toupper(as.character(state)),
-      county_geoid_source = as.character(county_geoid),
-      county_fips_source = normalize_county_fips(county_fips),
-      source_county_code = normalize_county_code(county_code),
-      census_block_id = dplyr::na_if(trimws(as.character(census_block_id)), ""),
-      join_key = trimws(as.character(join_key)),
-      parcel_id = as.character(parcel_id),
-      alt_key = as.character(alt_key),
-      county_name_source = as.character(county_name),
-      county_name_key = normalize_county_name_key(county_name_source),
-      land_use_code = normalize_land_use_code(use_code),
-      owner_name = as.character(owner_name),
-      owner_addr = as.character(owner_addr),
-      site_addr = as.character(phys_addr),
-      just_value = suppressWarnings(as.numeric(just_value)),
-      land_value = suppressWarnings(as.numeric(land_value)),
-      impro_value = suppressWarnings(as.numeric(impro_value)),
-      total_value = suppressWarnings(as.numeric(total_value)),
-      living_area_sqft = suppressWarnings(as.numeric(living_area_sqft)),
-      sale_qual_code = as.character(sale_qual_code),
-      last_sale_price = suppressWarnings(as.numeric(sale_price1)),
-      sale_yr1 = suppressWarnings(as.integer(sale_yr1)),
-      sale_mo1 = suppressWarnings(as.integer(sale_mo1)),
-      sale_mo1 = dplyr::if_else(!is.na(sale_mo1) & sale_mo1 >= 1L & sale_mo1 <= 12L, sale_mo1, NA_integer_),
-      last_sale_date = lubridate::make_date(year = sale_yr1, month = sale_mo1, day = 1L),
-      ingest_run_id = NA_character_,
-      transform_version = "rof_parcel.parcel_tabular_clean_current",
-      qa_missing_join_key = is.na(join_key) | join_key == "",
-      qa_zero_county = is.na(source_county_code) | source_county_code == "" | source_county_code == "0",
-      source_county_tag = as.character(county_tag),
-      parcel_uid = paste0(source_county_code, "::", join_key)
-    ) %>%
-    semi_join(market_counties %>% select(county_name_key), by = "county_name_key") %>%
-    left_join(
-      market_counties %>%
-        select(
-          market_key,
-          cbsa_code,
-          county_geoid,
-          county_name_ref = county_name,
-          county_name_key,
-          state_fips,
-          county_fips,
-          state_abbr_ref = state_abbr,
-          county_code,
-          county_tag_ref = county_tag
-        ),
-      by = "county_name_key"
-    ) %>%
-    mutate(
-      market_key = dplyr::coalesce(market_key, profile$market_key),
-      cbsa_code = dplyr::coalesce(cbsa_code, profile$cbsa_code),
-      county_geoid = dplyr::coalesce(.data$county_geoid.y, county_geoid_source),
-      county_fips = dplyr::coalesce(.data$county_fips.y, county_fips_source),
-      county_code = source_county_code,
-      county_tag = dplyr::coalesce(county_tag_ref, derive_county_tag(.data$county_fips.y)),
-      county_name = dplyr::coalesce(county_name_ref, county_name_source),
-      state_abbr = dplyr::coalesce(state_abbr_ref, state_abbr),
-      build_source = "rof_parcel.parcel_tabular_clean filtered by ref.market_county_membership",
-      run_timestamp = as.character(Sys.time())
-    ) %>%
-    select(
-      market_key,
-      cbsa_code,
-      state_abbr,
-      state_fips,
-      county_fips,
-      county_geoid,
-      county_code,
-      county_tag,
-      county_name,
-      county_name_key,
-      source_county_code,
-      source_county_tag,
-      county_name_source,
-      source_file,
-      ingest_run_id,
-      transform_version,
-      parcel_uid,
-      parcel_id,
-      alt_key,
-      join_key,
-      census_block_id,
-      land_use_code,
-      owner_name,
-      owner_addr,
-      site_addr,
-      living_area_sqft,
-      just_value,
-      land_value,
-      impro_value,
-      total_value,
-      sale_qual_code,
-      last_sale_price,
-      last_sale_date,
-      qa_missing_join_key,
-      qa_zero_county,
-      build_source,
-      run_timestamp
-    ) %>%
-    arrange(county_geoid, parcel_uid)
-
-  parcel_duplicates <- parcel_tabular %>%
-    count(parcel_uid, name = "n_rows") %>%
-    filter(n_rows > 1)
-
-  canonical <- parcel_tabular %>%
-    distinct(parcel_uid, .keep_all = TRUE)
-
-  list(
-    canonical = canonical,
-    duplicates = parcel_duplicates,
-    market_counties = market_counties
-  )
-}
-
-build_parcel_join_qa <- function(market_counties, geometry_join_qa) {
-  if (nrow(geometry_join_qa) == 0) {
-    return(
-      market_counties %>%
-        transmute(
-          market_key,
-          cbsa_code,
-          state_abbr,
-          state_fips,
-          county_fips,
-          county_geoid,
-          county_name,
-          county_tag,
-          source_shp = NA_character_,
-          output_dir = NA_character_,
-          raw_path = NA_character_,
-          analysis_path = NA_character_,
-          qa_path = NA_character_,
-          total_rows_raw = NA_real_,
-          unmatched_rows_raw = NA_real_,
-          unmatched_rate_raw = NA_real_,
-          total_rows_analysis = NA_real_,
-          unmatched_rows_analysis = NA_real_,
-          unmatched_rate_analysis = NA_real_,
-          pass = NA
-        ) %>%
-        mutate(
-          build_source = "parcel_geometry_join_qa_county_summary.rds_missing",
-          run_timestamp = as.character(Sys.time())
-        )
-    )
+build_parcel_standardization_products <- function(con, parcel_root = resolve_parcel_standardized_root()) {
+  market_counties <- read_parcel_available_market_counties(con)
+  if (nrow(market_counties) == 0) {
+    stop("Layer 04 found no parcel-backed market counties to publish.", call. = FALSE)
   }
-
-  market_counties %>%
-    left_join(
-      geometry_join_qa %>%
-        select(
-          county_name_key,
-          source_county_tag = county_tag,
-          source_county_code = county_code,
-          source_shp,
-          output_dir,
-          raw_path,
-          analysis_path,
-          qa_path,
-          total_rows_raw,
-          unmatched_rows_raw,
-          unmatched_rate_raw,
-          total_rows_analysis,
-          unmatched_rows_analysis,
-          unmatched_rate_analysis,
-          pass
-        ),
-      by = "county_name_key"
-    ) %>%
-    mutate(
-      build_source = "parcel_geometry_join_qa_county_summary.rds",
-      run_timestamp = as.character(Sys.time())
-    ) %>%
-    arrange(county_geoid)
-}
-
-build_parcel_lineage <- function(parcels_canonical, parcel_join_qa, load_log) {
-  parcel_counts <- parcels_canonical %>%
-    group_by(market_key, county_geoid, county_fips) %>%
-    summarise(
-      parcel_rows = n(),
-      distinct_parcels = n_distinct(parcel_uid),
-      .groups = "drop"
-    )
-
-  parcel_join_qa %>%
-    left_join(parcel_counts, by = c("market_key", "county_geoid", "county_fips")) %>%
-    left_join(load_log, by = "county_name_key") %>%
-    mutate(
-      county_fips = dplyr::coalesce(.data$county_fips.x, .data$county_fips.y),
-      county_tag = dplyr::coalesce(.data$county_tag.x, .data$county_tag.y),
-      county_name = dplyr::coalesce(.data$county_name.x, .data$county_name.y),
-      source_file = dplyr::coalesce(.data$source_file, NA_character_),
-      source_shp = dplyr::coalesce(.data$source_shp.x, .data$source_shp.y),
-      raw_path = dplyr::coalesce(.data$raw_path.x, .data$raw_path.y),
-      analysis_path = dplyr::coalesce(.data$analysis_path.x, .data$analysis_path.y),
-      qa_path = dplyr::coalesce(.data$qa_path.x, .data$qa_path.y),
-      total_rows_raw = dplyr::coalesce(.data$total_rows_raw.x, .data$total_rows_raw.y),
-      unmatched_rows_raw = dplyr::coalesce(.data$unmatched_rows_raw.x, .data$unmatched_rows_raw.y),
-      unmatched_rate_raw = dplyr::coalesce(.data$unmatched_rate_raw.x, .data$unmatched_rate_raw.y),
-      total_rows_analysis = dplyr::coalesce(.data$total_rows_analysis.x, .data$total_rows_analysis.y),
-      unmatched_rows_analysis = dplyr::coalesce(.data$unmatched_rows_analysis.x, .data$unmatched_rows_analysis.y),
-      unmatched_rate_analysis = dplyr::coalesce(.data$unmatched_rate_analysis.x, .data$unmatched_rate_analysis.y),
-      pass = dplyr::coalesce(.data$pass.x, .data$pass.y),
-      parcel_rows = dplyr::coalesce(parcel_rows, 0L),
-      distinct_parcels = dplyr::coalesce(distinct_parcels, 0L),
-      lineage_source = dplyr::if_else(!is.na(load_status), "rof_parcel.parcel_county_load_log", "parcel_geometry_join_qa_county_summary.rds"),
-      build_source = "parcel geometry QA + county load log + parcel counts",
-      run_timestamp = as.character(Sys.time())
-    ) %>%
-    select(
-      market_key,
-      cbsa_code,
-      state_abbr,
-      state_fips,
-      county_fips,
-      county_geoid,
-      county_name,
-      county_tag,
-      source_file,
-      source_shp,
-      source_shp_path,
-      raw_path,
-      analysis_keep_duplicates_path,
-      analysis_path,
-      qa_path,
-      transform_version,
-      generated_at,
-      load_completed_at,
-      load_status,
-      load_note,
-      parcel_rows,
-      distinct_parcels,
-      duplicate_groups,
-      duplicate_rows,
-      dissolve_fallback_rows,
-      total_rows_raw,
-      unmatched_rows_raw,
-      unmatched_rate_raw,
-      total_rows_analysis,
-      unmatched_rows_analysis,
-      unmatched_rate_analysis,
-      pass,
-      lineage_source,
-      build_source,
-      run_timestamp
-    ) %>%
-    arrange(county_geoid)
-}
-
-attach_retail_classification <- function(parcels_canonical, land_use_mapping) {
-  parcels_canonical %>%
-    left_join(
-      land_use_mapping %>%
-        select(
-          land_use_code,
-          land_use_category = category,
-          land_use_description = description,
-          retail_flag,
-          retail_subtype,
-          review_note,
-          mapping_version,
-          mapping_method,
-          classification_source_path
-        ),
-      by = "land_use_code"
-    ) %>%
-    mutate(
-      retail_flag = dplyr::coalesce(retail_flag, FALSE),
-      retail_subtype = dplyr::if_else(retail_flag & is.na(retail_subtype), "retail_uncategorized", retail_subtype),
-      parcel_segment = dplyr::if_else(retail_flag, "Retail parcel", "Residential/other parcel"),
-      build_source = "parcel.parcels_canonical + ref.land_use_mapping",
-      run_timestamp = as.character(Sys.time())
-    ) %>%
-    arrange(county_geoid, parcel_uid)
-}
-
-build_retail_parcels <- function(parcels_canonical_classified) {
-  parcels_canonical_classified %>%
-    filter(retail_flag) %>%
-    arrange(county_geoid, parcel_uid)
-}
-
-build_parcel_qa <- function(products) {
-  canonical_unique <- validate_unique_key(products$parcels_canonical, "parcel_uid", "parcel.parcels_canonical")
-  missing_join_key_count <- sum(products$parcels_canonical$qa_missing_join_key, na.rm = TRUE)
-  missing_county_geoid_count <- sum(is.na(products$parcels_canonical$county_geoid) | !nzchar(products$parcels_canonical$county_geoid))
-  unmapped_use_codes <- products$parcels_canonical %>%
-    filter(!is.na(land_use_code)) %>%
-    anti_join(products$land_use_mapping %>% select(land_use_code), by = "land_use_code") %>%
-    count(land_use_code, sort = TRUE, name = "parcel_count") %>%
-    mutate(
-      build_source = "parcel.parcels_canonical anti-join ref.land_use_mapping",
-      run_timestamp = as.character(Sys.time())
-    )
-
-  join_qa_missing_counties <- sum(is.na(products$parcel_join_qa$analysis_path) | !nzchar(products$parcel_join_qa$analysis_path))
-  join_qa_failed_counties <- sum(products$parcel_join_qa$pass == FALSE, na.rm = TRUE)
-  join_qa_high_unmatched <- sum(
-    !is.na(products$parcel_join_qa$unmatched_rate_analysis) &
-      products$parcel_join_qa$unmatched_rate_analysis > 0.02,
-    na.rm = TRUE
-  )
-  zero_parcel_counties <- sum(products$parcel_lineage$distinct_parcels == 0, na.rm = TRUE)
-
-  validation_results <- dplyr::bind_rows(
-    make_validation_row(
-      "parcel_canonical_unique_parcel_uid",
-      dataset = "parcel.parcels_canonical",
-      metric_value = canonical_unique$duplicates,
-      pass = isTRUE(canonical_unique$pass),
-      details = paste("Duplicate parcel_uid rows:", canonical_unique$duplicates)
-    ),
-    make_validation_row(
-      "parcel_canonical_missing_join_key",
-      dataset = "parcel.parcels_canonical",
-      metric_value = missing_join_key_count,
-      pass = missing_join_key_count == 0,
-      details = paste("Rows with missing join_key:", missing_join_key_count)
-    ),
-    make_validation_row(
-      "parcel_canonical_missing_county_geoid",
-      dataset = "parcel.parcels_canonical",
-      metric_value = missing_county_geoid_count,
-      pass = missing_county_geoid_count == 0,
-      details = paste("Rows with missing county_geoid:", missing_county_geoid_count)
-    ),
-    make_validation_row(
-      "parcel_land_use_mapping_unmapped_codes",
-      dataset = "parcel.retail_parcels",
-      metric_value = nrow(unmapped_use_codes),
-      pass = nrow(unmapped_use_codes) == 0,
-      details = paste("Distinct unmapped land_use_code values:", nrow(unmapped_use_codes))
-    ),
-    make_validation_row(
-      "parcel_join_qa_missing_counties",
-      dataset = "parcel.parcel_join_qa",
-      metric_value = join_qa_missing_counties,
-      pass = join_qa_missing_counties == 0,
-      details = paste("Market counties without geometry QA lineage:", join_qa_missing_counties)
-    ),
-    make_validation_row(
-      "parcel_join_qa_failed_counties",
-      dataset = "parcel.parcel_join_qa",
-      metric_value = join_qa_failed_counties,
-      pass = join_qa_failed_counties == 0,
-      details = paste("Counties with geometry QA pass == FALSE:", join_qa_failed_counties)
-    ),
-    make_validation_row(
-      "parcel_join_qa_high_unmatched_rate_counties",
-      severity = "warning",
-      dataset = "parcel.parcel_join_qa",
-      metric_value = join_qa_high_unmatched,
-      pass = join_qa_high_unmatched == 0,
-      details = paste("Counties with unmatched_rate_analysis > 0.02:", join_qa_high_unmatched)
-    ),
-    make_validation_row(
-      "parcel_lineage_zero_parcel_counties",
-      severity = "warning",
-      dataset = "parcel.parcel_lineage",
-      metric_value = zero_parcel_counties,
-      pass = zero_parcel_counties == 0,
-      details = paste("Market counties with zero published parcels:", zero_parcel_counties)
-    )
-  ) %>%
-    mutate(
-      build_source = "data_platform/layers/04_parcel_standardization",
-      run_timestamp = as.character(Sys.time())
-    )
-
-  list(
-    validation_results = validation_results,
-    unmapped_use_codes = unmapped_use_codes
-  )
-}
-
-build_parcel_standardization_products <- function(con, profile = get_market_profile(), parcel_root = resolve_parcel_standardized_root()) {
-  parcel_build <- build_parcels_canonical(con, profile = profile)
+  parcel_build <- build_parcels_canonical(con, market_counties = market_counties)
   land_use_mapping <- read_land_use_mapping(con)
   geometry_join_qa <- read_county_geometry_join_qa(parcel_root = parcel_root)
-  parcel_join_qa <- build_parcel_join_qa(parcel_build$market_counties, geometry_join_qa)
-  load_log <- read_county_load_log(con, parcel_build$market_counties)
+  load_log <- read_county_load_log(con, market_counties)
   parcels_canonical <- attach_retail_classification(parcel_build$canonical, land_use_mapping)
-  parcel_lineage <- build_parcel_lineage(parcels_canonical, parcel_join_qa, load_log)
+  parcel_lineage <- build_parcel_lineage(
+    market_counties = market_counties,
+    geometry_join_qa = geometry_join_qa,
+    load_log = load_log,
+    parcels_canonical = parcels_canonical
+  )
+  parcel_join_qa <- build_parcel_join_qa(parcel_lineage)
   retail_parcels <- build_retail_parcels(parcels_canonical)
 
   products <- list(
-    profile = profile,
-    market_counties = parcel_build$market_counties,
+    market_counties = market_counties,
     land_use_mapping = land_use_mapping,
     parcels_canonical = parcels_canonical,
     parcel_uid_duplicates = parcel_build$duplicates,
@@ -585,9 +270,8 @@ build_parcel_standardization_products <- function(con, profile = get_market_prof
     retail_parcels = retail_parcels
   )
 
-  qa_outputs <- build_parcel_qa(products)
-  products$qa_validation_results <- qa_outputs$validation_results
-  products$qa_unmapped_use_codes <- qa_outputs$unmapped_use_codes
+  products$qa_unmapped_use_codes <- build_parcel_unmapped_use_codes(products$parcels_canonical, products$land_use_mapping)
+  products$qa_validation_results <- build_parcel_validation_results(products)
   products
 }
 

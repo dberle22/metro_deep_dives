@@ -34,27 +34,27 @@ load_section_02_inputs <- function(con, profile = get_market_profile()) {
 
   cbsa_features <- DBI::dbGetQuery(
     con,
-    glue::glue("SELECT * FROM foundation.cbsa_features WHERE market_key = '{profile$market_key}'")
+    "SELECT * FROM foundation.cbsa_features"
   ) %>%
-    select(-market_key, -state_scope, -build_source, -run_timestamp)
+    select(-any_of(c("market_key", "state_scope", "build_source", "run_timestamp")))
 
   tract_features <- DBI::dbGetQuery(
     con,
-    glue::glue("SELECT * FROM foundation.tract_features WHERE market_key = '{profile$market_key}'")
+    glue::glue("SELECT * FROM foundation.tract_features WHERE cbsa_code = '{profile$cbsa_code}'")
   ) %>%
-    select(-market_key, -state_scope, -build_source, -run_timestamp)
+    select(-any_of(c("market_key", "state_scope", "build_source", "run_timestamp")))
 
   market_tract_tbl <- DBI::dbGetQuery(
     con,
-    glue::glue("SELECT * FROM foundation.market_tract_geometry WHERE market_key = '{profile$market_key}'")
+    glue::glue("SELECT * FROM foundation.market_tract_geometry WHERE cbsa_code = '{profile$cbsa_code}'")
   ) %>%
-    select(-market_key, -state_scope, -build_source, -run_timestamp)
+    select(-any_of(c("market_key", "state_scope", "build_source", "run_timestamp")))
 
   market_county_tbl <- DBI::dbGetQuery(
     con,
-    glue::glue("SELECT * FROM foundation.market_county_geometry WHERE market_key = '{profile$market_key}'")
+    glue::glue("SELECT * FROM foundation.market_county_geometry WHERE cbsa_code = '{profile$cbsa_code}'")
   ) %>%
-    select(-market_key, -state_scope, -build_source, -run_timestamp)
+    select(-any_of(c("market_key", "state_scope", "build_source", "run_timestamp")))
 
   market_tract_sf <- geometry_wkt_table_to_sf(market_tract_tbl) %>%
     left_join(

@@ -232,7 +232,14 @@ market_label <- function(name, profile = get_market_profile()) {
 
 resolve_market_output_dir <- function(section_id, key = ACTIVE_MARKET_KEY, subdir = NULL) {
   market_context <- get_market_context(key)
-  output_dir <- file.path(SECTION_OUTPUT_ROOT, section_id, "outputs", market_context$market_key)
+
+  base_output_root <- if (identical(Sys.getenv("ROF_OUTPUT_MODE", unset = ""), "notebook_build")) {
+    "notebooks/retail_opportunity_finder/notebook_build/sections"
+  } else {
+    SECTION_OUTPUT_ROOT
+  }
+
+  output_dir <- file.path(base_output_root, section_id, "outputs", market_context$market_key)
 
   if (!is.null(subdir) && nzchar(subdir)) {
     output_dir <- file.path(output_dir, subdir)
@@ -272,14 +279,9 @@ read_artifact_path <- function(section_id, artifact_name, ext = "rds", key = ACT
     return(market_path)
   }
 
-  legacy_path <- resolve_legacy_output_path(section_id, artifact_name, ext = ext, subdir = subdir)
-  if (file.exists(legacy_path)) {
-    return(legacy_path)
-  }
-
   stop(
     glue(
-      "Artifact not found for section '{section_id}': looked for '{market_path}' and legacy '{legacy_path}'."
+      "Artifact not found for section '{section_id}': looked for '{market_path}'."
     ),
     call. = FALSE
   )

@@ -9,10 +9,12 @@ This layer moves tract eligibility scoring upstream into a reusable workflow.
 - `run_tract_scoring_layer.R` is the executable entrypoint for the layer.
 
 ## Current Products
+- `rof_features.tract_models`
 - `scoring.tract_scores`
 - `scoring.cluster_seed_tracts`
 
 ## Current State
+- `rof_features.tract_models` is now available as a table-owned SQL asset that follows the tract-model reference contract directly from `rof_features.tract_features`.
 - `scoring.tract_scores` and `scoring.cluster_seed_tracts` are now owned through table-named R assets in `tables/`.
 - The layer runner now publishes a multi-market southeast scoring slice by iterating scoreable CBSAs in `FL`, `GA`, `NC`, and `SC`.
 - Section 03 remains a compatibility consumer and artifact exporter, with the managed scoring table still carrying the tract component audit fields needed by downstream notebook and zone consumers.

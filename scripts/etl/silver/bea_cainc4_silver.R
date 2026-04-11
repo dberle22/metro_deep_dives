@@ -155,12 +155,11 @@ wide_df <- long_df %>%
   )
 
 ## Write data frames to our database ----
-DBI::dbWriteTable(con, DBI::Id(schema="silver", table="bea_regional_cainc1_long"),
+DBI::dbWriteTable(con, DBI::Id(schema="silver", table="bea_regional_cainc4_long"),
                   long_df, overwrite = TRUE)
 
-DBI::dbWriteTable(con, DBI::Id(schema="silver", table="bea_regional_cainc1_wide"),
+DBI::dbWriteTable(con, DBI::Id(schema="silver", table="bea_regional_cainc4_wide"),
                   wide_df, overwrite = TRUE)
 
 # Disconnect our DB ----
 dbDisconnect(con, shutdown = TRUE)
-

@@ -58,6 +58,8 @@ vars <- c(
   edu_doctorate               = "B15003_025"
 )
 
+tract_states <- resolve_tract_state_scope()
+
 # Ingest Data ----
 
 # US ----
@@ -166,7 +168,24 @@ dbWriteTable(con,
              place_acs_raw, 
              overwrite = TRUE)
 
-# Tract ----
+# Tract (all supported states) ----
+all_tract_acs_raw <- acs_ingest(
+  geography = "tract",
+  state = tract_states,
+  years     = 2012:2024,
+  variables = vars,
+  survey    = "acs5",
+  output    = "wide"
+)
+
+# Name tables Source <> KPI <> Gran
+dbWriteTable(con, 
+             DBI::Id(schema = "staging", table = "acs_edu_tract"),
+             all_tract_acs_raw, 
+             overwrite = TRUE)
+
+# Legacy: preserve existing state-level tract ingest tables for compatibility
+
 # FL
 tract_fl_acs_raw <- acs_ingest(
   geography = "tract",

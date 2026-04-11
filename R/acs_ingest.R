@@ -23,9 +23,8 @@ acs_ingest <- function(
                                                   "school district (elementary)", "school district (secondary)", "school district (unified)")) {
     stop("For geography='", geography, "', please provide `state` (can be a single value or vector).")
   }
-  
-  purrr::map_dfr(years, function(y) {
-    # build args and include `state` only when provided and relevant
+
+  build_args <- function(y, st = NULL) {
     args <- list(
       geography = geography,
       variables = variables,
@@ -35,13 +34,29 @@ acs_ingest <- function(
       geometry  = geometry,
       ...
     )
-    
-    if (!is.null(state) && tolower(geography) %in% c("tract", "block group", "county subdivision", "place",
-                                                     "school district (elementary)", "school district (secondary)", "school district (unified)")) {
-      args$state <- state
+
+    if (!is.null(st) && tolower(geography) %in% c("tract", "block group", "county subdivision", "place",
+                                                 "school district (elementary)", "school district (secondary)", "school district (unified)")) {
+      args$state <- st
     }
-    
-    do.call(tidycensus::get_acs, args) %>%
-      dplyr::mutate(year = y, .after = 1)
-  })
+
+    args
+  }
+
+  if (!is.null(state) && tolower(geography) %in% c("tract", "block group", "county subdivision", "place",
+                                                   "school district (elementary)", "school district (secondary)", "school district (unified)") && length(state) > 1) {
+    state <- unique(state)
+    purrr::map_dfr(years, function(y) {
+      purrr::map_dfr(state, function(st) {
+        do.call(tidycensus::get_acs, build_args(y, st)) %>%
+          dplyr::mutate(year = y, state = st, .after = 1)
+      })
+    })
+  } else {
+    purrr::map_dfr(years, function(y) {
+      args <- build_args(y, state)
+      do.call(tidycensus::get_acs, args) %>%
+        dplyr::mutate(year = y, .after = 1)
+    })
+  }
 }

@@ -44,6 +44,7 @@
 
 ## Lineage
 1. **Creation/write references**:
+   - `scripts/etl/silver/bea_cainc4_silver.R:161:DBI::dbWriteTable(con, DBI::Id(schema="silver", table="bea_regional_cainc4_wide"),`
    - `scripts/etl/gold/gold_economy_income.sql:71:from metro_deep_dive.silver.bea_regional_cainc4_wide`
    - `scripts/etl/gold/gold_economy_wide.sql:74:from metro_deep_dive.silver.bea_regional_cainc4_wide`
 

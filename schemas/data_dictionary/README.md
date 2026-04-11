@@ -7,9 +7,9 @@ It is designed for:
 - Codex/agent workflows that need machine-readable contracts for profiling, QA, and documentation updates
 
 ## What The Dictionary Contains
-Each table dictionary is stored as a pair:
-- `<layer>/<schema>__<table>.yml` (machine-readable source of truth)
-- `<layer>/<schema>__<table>.md` (human-readable reference)
+Dictionary artifacts follow two patterns:
+- Silver and Gold table dictionaries are stored as pairs: `<layer>/<schema>__<table>.yml` and `<layer>/<schema>__<table>.md`.
+- Staging dictionaries are currently source/theme family contracts stored as Markdown files, with coverage matrices documenting the geography-replica tables owned by each family.
 
 The dictionary captures:
 - Table-level metadata: purpose, grain, keys, time coverage, geo coverage
@@ -42,6 +42,7 @@ Generated artifacts:
 
 ## Main Dictionary Themes
 - Layered contracts: Bronze -> Staging -> Silver -> Gold
+- Staging contracts are family-level landing contracts rather than one file per geography replica table
 - Standardized geo/time fields across analytics tables (`geo_level`, `geo_id`, `geo_name`, `year`/`period`)
 - ACS pattern in Silver:
 `<theme>_base` tables: ACS-aligned base metrics and direct variable definitions
@@ -81,19 +82,21 @@ all carried fields use Silver definitions; derived fields use semantic definitio
 5. Log significant changes in `docs/governance/bug_fixes.md` if behavior/definitions changed materially.
 
 ## Source Of Truth Rules
-- YAML is the source of truth for dictionary content.
-- Markdown is a synchronized presentation layer and should mirror YAML column definitions.
-- If YAML and Markdown differ, update YAML first, then sync Markdown.
+- YAML is the source of truth for Silver and Gold table dictionaries.
+- Staging is the current exception: source/theme family contracts are maintained directly in Markdown until a family-level machine-readable format is introduced.
+- When a table has both YAML and Markdown artifacts, update YAML first, then sync Markdown.
 
 ## How Analysts Should Use This
-- Start with the table `.md` file for quick understanding.
+- Start with the relevant `.md` contract file for quick understanding.
+- For staging, that usually means the source/theme family contract rather than an individual replica table.
 - Use `Grain & Keys` before joining tables.
 - Use `Columns` definitions to interpret metrics and avoid misuse.
 - Check `Data Quality Notes` and `Known Gaps / To-Dos` before publishing outputs.
 - For derived KPIs, use semantic definitions as analysis meaning, and lineage for formula context.
 
 ## How Agents Should Use This
-- Read `.yml` first for deterministic parsing.
+- Read `.yml` first for deterministic parsing when a YAML artifact exists.
+- For staging family contracts, use the Markdown contract and its coverage matrix as the current source of truth.
 - Treat `columns[].definition` and `needs_confirmation` as contract quality signals.
 - Use lineage entries to trace transformations in ETL scripts.
 - Prefer dictionary values over inferred guesses when generating analysis or visuals.
@@ -112,13 +115,13 @@ all carried fields use Silver definitions; derived fields use semantic definitio
 4. Re-run coverage and unresolved-definition audits
 
 ## Current Status (Working Convention)
-- Staging and Silver dictionaries are mature and should be treated as primary references.
+- Staging family contracts and Silver dictionaries are primary references, but staging coverage should be interpreted at the source/theme family level rather than as one doc per replica table.
 - Gold dictionary coverage is now operational and should be updated in lockstep with Gold ETL changes.
 - `gold.tx_isd_metrics` remains a known exception area for ongoing definition hardening.
 
 ## Quick Start
 1. Open the layer checklist (for example `layers/silver/checklist.md`).
 2. Pick the next table or theme group.
-3. Update the `.yml` dictionary first.
-4. Sync/update the `.md` file.
+3. If the artifact has YAML, update the `.yml` dictionary first; for staging family contracts, update the `.md` file directly.
+4. Sync/update the companion `.md` file when a YAML artifact exists.
 5. Log notable fixes in `docs/governance/bug_fixes.md` and update coverage checklists.

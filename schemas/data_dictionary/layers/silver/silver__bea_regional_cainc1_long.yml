@@ -186,8 +186,7 @@ columns:
     needs_confirmation: no
 lineage:
   - step: write_target
-    script: scripts/etl/silver/bea_cainc4_silver.R
-    details: 'Table write/create reference(s): scripts/etl/silver/bea_cainc4_silver.R:158:DBI::dbWriteTable(con,
-      DBI::Id(schema="silver", table="bea_regional_cainc1_long"), | scripts/etl/silver/bea_cainc1_silver.R:182:DBI::dbWriteTable(con,
+    script: scripts/etl/silver/bea_cainc1_silver.R
+    details: 'Table write/create reference(s): scripts/etl/silver/bea_cainc1_silver.R:182:DBI::dbWriteTable(con,
       DBI::Id(schema="silver", table="bea_regional_cainc1_long"),'
 kpi_definitions: []

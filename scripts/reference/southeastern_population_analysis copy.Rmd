@@ -1,0 +1,1646 @@
+---
+title: "Southeastern US Analysis"
+output: html_notebook
+---
+
+This notebook analyzes key demographic figures of metro areas in the Southeastern US. Our goal is to identify the fastest growing metro areas by population growth and explore a few related variables
+
+We will follow this structure to our analysis:
+  1. Ingest our data sources
+  2. Calculate core KPIs
+  3. Generate rankings & visuals
+  4. Discuss main takeaways
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+# Set up environment
+```{r Load Packages, include - FALSE}
+library(tidyverse)
+library(lubridate)
+library(magrittr)
+library(plotly)
+library(tidytext)
+library(scales)
+library(tidycensus)
+library(tigris)
+library(sf)
+library(readxl)
+library(httr)
+library(jsonlite)
+library(DT)
+library(ggbeeswarm)
+library(knitr)
+library(factoextra)
+library(corrplot)
+library(leaflet)
+library(ggrepel)
+library(slider)
+library(gt)
+library(ragg)
+```
+
+```{r Load custom functions, include = FALSE}
+# Data Cleaning
+source("/Users/danberle/Documents/projects/real_estate_investment/functions/functions_data.R")
+# Data Viz
+source("/Users/danberle/Documents/projects/real_estate_investment/functions/functions_viz.R")
+```
+
+```{r Create new functions, include = FALSE}
+# Generic helper to add simple % change and CAGR for multiple horizons
+# df must contain: id_cols (e.g., GEOID, NAME), a YEAR column (numeric/int), and a value_col
+add_growth_cols <- function(df, id_cols, year_col = "YEAR", value_col, horizons = c(1,3,5,10), prefix = "") {
+  stopifnot(all(c(id_cols, year_col, value_col) %in% names(df)))
+  df %>%
+    arrange(across(all_of(c(id_cols, year_col)))) %>%
+    group_by(across(all_of(id_cols))) %>%
+    mutate(
+      across(
+        all_of(value_col),
+        .fns = list(
+          !!!setNames(
+            lapply(horizons, function(h) \(x) (x / dplyr::lag(x, h) - 1)),
+            paste0(prefix, "chg_", horizons, "y")
+          ),
+          !!!setNames(
+            lapply(horizons, function(h) \(x) (x / dplyr::lag(x, h))^(1 / h) - 1),
+            paste0(prefix, "cagr_", horizons, "y")
+          )
+        ),
+        .names = "{fn}"
+      )
+    ) %>%
+    ungroup()
+}
+```
+
+```{r Ingest GEO Data, include=FALSE}
+cbsa_shapes <- core_based_statistical_areas(cb = TRUE, year = 2023) %>%
+  st_transform(crs = 5070)
+
+# Load state and county outlines
+states_sf <- states(cb = TRUE, year = 2023) %>% st_transform(4326)
+counties_sf <- counties(cb = TRUE, year = 2023) %>% st_transform(4326)
+
+# Optional: Filter to lower 48
+states_sf <- states_sf %>% filter(!STATEFP %in% c("02", "15", "72", "78", "66", "69", "60"))
+counties_sf <- counties_sf %>% filter(!STATEFP %in% c("02", "15", "72", "78", "66", "69", "60"))
+```
+
+# Load Data
+
+The main data we are using for this analysis and their sources are:
+  1. Population Growth - ACS (PEP Future)
+  2. Median Income, Median Age, Housing Units - ACS
+  3. Housing Permits Per Capita (Last 5 Years) - BPS
+  4. GDP Growth - BEA
+  5. Unemployment Rate - BLS
+  
+```{r Ingest}
+# Metro Metadata
+metro_metadata <- read_csv("/Users/danberle/Documents/projects/real_estate_investment/data/gold/cbsa/cbsa_metadata.csv") %>%
+  mutate(GEOID = as.character(GEOID))
+
+# ACS
+acs_silver <- read_csv("/Users/danberle/Documents/projects/real_estate_investment/data/silver/cbsa/acs_cbsa_5_year.csv")
+
+# BPS
+bps_silver <- read_csv("/Users/danberle/Documents/projects/real_estate_investment/data/silver/cbsa/bps_cbsa.csv")
+
+# GDP
+bea_silver <- read_csv("/Users/danberle/Documents/projects/real_estate_investment/data/silver/cbsa/bea_cbsa_gdp_summary.csv")
+
+# BLS
+bls_silver <- read_csv("/Users/danberle/Documents/projects/real_estate_investment/data/silver/cbsa/bls_cbsa_unemployment.csv")
+```
+
+# Calculate KPIs
+
+In this section we will clean our data sets and calculate our KPIs
+
+We start by calculating population growth by metro area. We calculate 1, 3, 5, and 10 year population growth rates. 
+```{r Population Growth Metrics}
+# Pop Growth
+metrics_acs_pop_growth <- acs_silver %>%
+  select(GEOID, NAME, YEAR = year, TOTAL_POP = pop_totalE) %>%
+  mutate(YEAR = as.integer(YEAR)) %>%
+  add_growth_cols(
+    id_cols = c("GEOID", "NAME"),
+    year_col = "YEAR",
+    value_col = "TOTAL_POP",
+    horizons = c(1,3,5,10),
+    prefix = "pop_") %>%
+  mutate(GEOID = as.character(GEOID))
+
+# Income Growth
+metrics_acs_income_growth <- acs_silver %>%
+  select(GEOID, NAME, YEAR = year, MEDIAN_INCOME = income_medE) %>%
+  mutate(YEAR = as.integer(YEAR)) %>%
+  add_growth_cols(
+    id_cols = c("GEOID", "NAME"),
+    year_col = "YEAR",
+    value_col = "MEDIAN_INCOME",
+    horizons = c(1,3,5,10),
+    prefix = "income_") %>%
+  mutate(GEOID = as.character(GEOID))
+```
+
+Next, we select our main demographic KPIs from the ACS: Income, Age, Housing Units
+```{r Demographic Metrics}
+metrics_acs_demographics <- acs_silver %>%
+  select(GEOID, NAME, YEAR = year, MEDIAN_INCOME = income_medE, MEDIAN_AGE = age_medE, HOUSING_UNITS = total_housing_unitsE, VACANCY_RATE = vacancy_rate, HIGHER_ED_RATE = ed_higher_pop_percent, LFP_RATE = labor_force_participation_rate) %>%
+  mutate(GEOID = as.character(GEOID))
+```
+
+We follow this up by calculating our housing permit metrics from the BPS. We will start by rolling up our monthly metrics to a yearly level. We then calculate a per capita rate by taking units per 1000 people, doing this for the most recent year and taking a 5 year average of units per current population. Lastly, we calculate our unit growth rate. 
+
+```{r Building Units}
+# Annualize BPS
+  # We need to add leading zeroes to GEOID
+bps_annual <- bps_silver %>%
+  select(GEOID = CBSA_CODE, YEAR, MONTH, TOTAL_BLDGS, TOTAL_UNITS) %>%
+  mutate(YEAR = as.integer(YEAR)) %>%
+  group_by(GEOID, YEAR) %>%
+  summarise(
+    permits_units = sum(TOTAL_UNITS, na.rm = TRUE),
+    permits_buildings = sum(TOTAL_BLDGS, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Join population to normalize (use the same YEAR in pop_kpis)
+bps_with_pop <- bps_annual %>%
+  left_join(
+    metrics_acs_pop_growth %>% 
+      select(GEOID, YEAR, TOTAL_POP),
+    by = c("GEOID", "YEAR")
+  )
+
+# Compute normalized KPIs + 5-year rolling averages (centered on YEAR)
+metrics_bps_kpis <- bps_with_pop %>%
+  group_by(GEOID) %>%
+  arrange(GEOID, YEAR) %>%
+  mutate(
+    units_per_1k = if_else(TOTAL_POP > 0, 1000 * permits_units / TOTAL_POP, NA_real_),
+    bldgs_per_1k = if_else(TOTAL_POP > 0, 1000 * permits_buildings / TOTAL_POP, NA_real_),
+    units_per_1k_5y_avg = slider::slide_dbl(units_per_1k, mean, .before = 4, .complete = TRUE, na.rm = TRUE),
+    bldgs_per_1k_5y_avg = slider::slide_dbl(bldgs_per_1k, mean, .before = 4, .complete = TRUE, na.rm = TRUE)
+  ) %>%
+  ungroup() %>%
+  # Also add growth rates on annual units if helpful
+  add_growth_cols(
+    id_cols = c("GEOID"),
+    year_col = "YEAR",
+    value_col = "permits_units",
+    horizons = c(1,3,5),
+    prefix = "permits_units_"
+  )
+
+# Typical fields you’ll use downstream:
+# - units_per_1k_5y_avg (primary)
+# - units_per_1k (latest year)
+# - permits_units_chg_5y / permits_units_cagr_5y (optional)
+```
+
+We follow up our BPS data with calculations of our GPD growth per CBSA. Here, we will go for CAGR and Simple Growth Rates using GDP Chained 2017.
+```{r GDP}
+metrics_gdp_kpis <- bea_silver %>%
+  select(GEOID = GeoFIPS, YEAR = Year, GDPChained2017, GDPCurrentDollars) %>%
+  mutate(YEAR = as.integer(YEAR)) %>%
+  add_growth_cols(
+    id_cols = c("GEOID"),
+    year_col = "YEAR",
+    value_col = "GDPChained2017",
+    horizons = c(1,3,5,10),
+    prefix = "gdp_real_"
+  ) %>%
+  # Optional: also compute for current-dollar
+  add_growth_cols(
+    id_cols = c("GEOID"),
+    year_col = "YEAR",
+    value_col = "GDPCurrentDollars",
+    horizons = c(1,3,5,10),
+    prefix = "gdp_nom_"
+  )
+```
+
+To finish up our KPI calcualtions we calculate unemployment rates per Metro using our LAUS data from BLS.
+```{r Unemployment}
+metrics_laus_kpis <- bls_silver %>%
+  mutate(YEAR = as.integer(year),
+         GEOID = as.character(substr(area_code, 5, 9))
+         ) %>%
+  select(GEOID, YEAR, unemployment_rate) %>%
+  group_by(GEOID) %>%
+  arrange(GEOID, YEAR) %>%
+  mutate(
+    unemp_rate_chg_5y = unemployment_rate - dplyr::lag(unemployment_rate, 5),
+    unemp_rate_chg_10y = unemployment_rate - dplyr::lag(unemployment_rate, 10)
+  ) %>%
+  ungroup()
+```
+
+To wrap up the section, we will join together our metrics tables, select the appropriate year and select a final list of KPIs
+```{r Final Metrics Table}
+
+# Select the latest year we will use for the analysis
+latest_year <- 2023L
+
+# Create the most recent metrics tables
+metrics_latest_pop <- metrics_acs_pop_growth %>%
+  filter(YEAR == latest_year) %>%
+  select(GEOID, YEAR,
+         TOTAL_POP,
+         starts_with("pop_chg_"), starts_with("pop_cagr_"))
+
+metrics_latest_income <- metrics_acs_income_growth %>%
+  filter(YEAR == latest_year) %>%
+  select(GEOID, YEAR,
+         MEDIAN_INCOME,
+         starts_with("income_chg_"), starts_with("income_cagr_"))
+
+metrics_latest_demo <- metrics_acs_demographics %>%
+  filter(YEAR == latest_year) %>%
+  select(GEOID, YEAR,
+         MEDIAN_AGE, HOUSING_UNITS, VACANCY_RATE, HIGHER_ED_RATE, LFP_RATE)
+
+metrics_latest_bps <- metrics_bps_kpis %>%
+  filter(YEAR == latest_year) %>%
+  select(GEOID, YEAR,
+         units_per_1k, units_per_1k_5y_avg,
+         starts_with("permits_units_")) # optional growth fields
+
+metrics_latest_gdp <- metrics_gdp_kpis %>%
+  filter(YEAR == latest_year) %>%
+  select(GEOID, YEAR,
+         GDPChained2017, GDPCurrentDollars,
+         starts_with("gdp_real_"), starts_with("gdp_nom_"))
+
+metrics_latest_laus <- metrics_laus_kpis %>%
+  filter(YEAR == latest_year) %>%
+  select(GEOID, YEAR, unemployment_rate, unemp_rate_chg_5y, unemp_rate_chg_10y)
+
+# Create our final join using our CBSA Metadata as a base
+final_cbsa_kpis <- metro_metadata %>%
+  select(GEOID, NAME, primary_state, region, division, states, cbsa_type) %>%
+  left_join(metrics_latest_pop, by = "GEOID") %>%
+  left_join(metrics_latest_income %>% select(-YEAR), by = "GEOID") %>%
+  left_join(metrics_latest_demo %>% select(-YEAR), by = "GEOID") %>%
+  left_join(metrics_latest_bps %>% select(-YEAR), by = "GEOID") %>%
+  left_join(metrics_latest_gdp %>% select(-YEAR), by = "GEOID") %>%
+  left_join(metrics_latest_laus %>% select(-YEAR), by = "GEOID") %>%
+  filter(!is.na(YEAR))
+```
+
+# Insights & Rankings
+
+Now that we have our core KPIs we will calculate rankings of the metro areas and begin to explore the data. The most important rankings to start with is 5 year population as this takes into account a two years before COVID and 3 years post.
+
+We will also focus on 5 Year GDP Growth, Current Unemployment, Units Per 1k (5 Year Avg), Vacancy Rate, Median Income, and Median Age
+
+```{r Create rankings and select variables}
+# Set our ranking metric
+rank_metric <- "pop_cagr_5y"
+
+# Select a subset of KPIs
+analysis_kpis <- final_cbsa_kpis %>%
+  select(GEOID:TOTAL_POP, pop_cagr_5y, MEDIAN_INCOME:LFP_RATE, units_per_1k_5y_avg, gdp_real_cagr_5y, unemployment_rate) 
+
+analysis_cbsa_growth_ranks <- analysis_kpis %>%
+  filter(YEAR == latest_year, !is.na(.data[[rank_metric]]), !is.na(cbsa_type)) %>%
+  # overall national rank across all CBSAs (Metro+Micro)
+  mutate(
+    nat_rank_all = min_rank(desc(.data[[rank_metric]])),
+    nat_pct_all  = percent_rank(.data[[rank_metric]])
+  ) %>%
+  # national rank *within class*
+  group_by(cbsa_type) %>%
+  mutate(
+    nat_rank_in_cbsa_type = min_rank(desc(.data[[rank_metric]])),
+    nat_pct_in_cbsa_type  = percent_rank(.data[[rank_metric]])
+  ) %>%
+  ungroup() %>%
+  # regional flag
+  mutate(in_region = region == "South") %>%
+  # regional rank *within class*
+  group_by(cbsa_type, in_region) %>%
+  mutate(
+    reg_rank_in_cbsa_type = min_rank(desc(.data[[rank_metric]])),
+    reg_pct_in_cbsa_type  = percent_rank(.data[[rank_metric]])
+  ) %>%
+  ungroup()
+
+analysis_south_growth_ranks <- analysis_cbsa_growth_ranks %>%
+  filter(region == "South") %>%
+  arrange(reg_rank_in_cbsa_type) %>%
+  mutate(
+    # 5 quantile bins: 5 = fastest growth
+    growth_q5 = ntile(.data[[rank_metric]], 5),
+    growth_q5_lbl = factor(growth_q5,
+      levels = 1:5,
+      labels = c("Bottom 20%", "20–40%", "40–60%", "60–80%", "Top 20%"))
+  )
+
+```
+
+```{r Join Rankings DF to CBSA Shapefile}
+analysis_shp_cbsa_growth_ranks <- cbsa_shapes %>%
+  left_join(analysis_south_growth_ranks %>% select(!NAME), by = c("GEOID" = "GEOID")) %>%
+  filter(region == "South")
+```
+
+Next, we will start answering some core questions
+
+# *Overview*
+In this section we will review metro area growth rates and highlight the top 10. 
+
+Regional Map of KPIs, colored by the growth ranking (grwoth label will be our cluster) and a bar chart of our top 10 markets, with a nicely formatted table of key metrics
+
+```{r CBSAs Top Growth Map}
+# --- Inputs you already have ---
+metric_var    <- "pop_cagr_5y"
+rank_var      <- "reg_rank_in_cbsa_type"
+top_n_labels  <- 10
+alpha_fill    <- 0.9
+se_sc_states  <- c("FL","GA","SC","NC","TN","AL","MS","AR","LA","TX","OK","VA","WV","KY")
+
+# --- 1) Filter states, set a common CRS ---
+states_se <- states_sf %>% filter(STUSPS %in% se_sc_states)
+plot_crs  <- st_crs(states_se)
+
+# transform *and* filter CBSA layer to match states before plotting
+cbsa_sf <- analysis_shp_cbsa_growth_ranks %>%
+  filter(primary_state %in% se_sc_states, 
+         !is.na(.data[[metric_var]]),
+         cbsa_type == "Metro Area") %>%
+  st_transform(plot_crs)
+
+states_se <- st_transform(states_se, plot_crs)
+
+# --- 2) Top-N labels computed in the same CRS as the map ---
+labs_df <- cbsa_sf %>%
+  filter(!is.na(.data[[rank_var]])) %>%
+  slice_min(order_by = .data[[rank_var]], n = top_n_labels, with_ties = TRUE) %>%
+  mutate(
+    label_pt = st_point_on_surface(geometry),
+    coords   = st_coordinates(label_pt),
+    x = coords[,1],
+    y = coords[,2]
+  )
+
+topN_outline <- labs_df  # same Top-N for bold outline
+
+# --- 3) Optional: set extent from states bbox ---
+bb   <- st_bbox(states_se)
+xlim <- c(bb["xmin"], bb["xmax"])
+ylim <- c(bb["ymin"], bb["ymax"])
+
+# --- 4) Plot ---
+p <- ggplot() +
+  geom_sf(data = states_se, fill = NA, color = "grey40", linewidth = 0.4) +
+
+  # main CBSA fill
+  geom_sf(data = cbsa_sf, aes(fill = .data[[metric_var]]),
+          color = "white", linewidth = 0.25, alpha = alpha_fill) +
+  # Add double stroke for state highlighting
+  geom_sf(data = states_se, fill = NA, color = "white", linewidth = 0.7) +
+  geom_sf(data = states_se, fill = NA, color = "grey30", linewidth = 0.35) +
+  # subtle dark edge on all CBSAs
+  geom_sf(data = cbsa_sf, fill = NA, color = "grey25", linewidth = 0.18) +
+  # bold edge for Top-N CBSAs
+  geom_sf(data = topN_outline, fill = NA, color = "black", linewidth = 0.45) +
+
+  # labels (computed in the same CRS, using numeric x/y)
+  ggrepel::geom_label_repel(
+    data = labs_df, aes(x = x, y = y, label = NAME),
+    size = 3, seed = 123,
+    fill = scales::alpha("white", 0.75),
+    label.size = 0.2,
+    min.segment.length = 0,
+    max.overlaps = Inf
+  ) +
+
+  scale_fill_viridis_c(
+    option = "viridis",
+    name   = "Population CAGR (5y)",
+    labels = ~ scales::percent(.x, accuracy = 0.1),
+    guide  = guide_colorbar(barheight = unit(3.5, "cm"))
+  ) +
+  coord_sf(xlim = xlim, ylim = ylim, expand = FALSE, clip = "on") +
+  labs(
+    title = "Southeast/South Central — CBSA Population Growth",
+    subtitle = "Fill: Pop CAGR (5y). Labels & bold outline: Top 10 metros"
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    axis.text = element_blank(),
+    axis.title = element_blank(),
+    axis.ticks = element_blank(),
+    panel.grid = element_blank(),
+    legend.title = element_text(face = "bold")
+  )
+
+p
+```
+
+```{r Quantiles Map}
+metric_var    <- "pop_cagr_5y"
+rank_var      <- "reg_rank_in_cbsa_type"
+top_n_labels  <- 10
+alpha_fill    <- 0.9
+se_sc_states  <- c("FL","GA","SC","NC","TN","AL","MS","AR","LA","TX","OK","VA","WV","KY")
+
+# --- data prep (same as before; ensure common CRS & SE subset) ---
+states_se <- states_sf %>% filter(STUSPS %in% c("FL","GA","SC","NC","TN","AL","MS","AR","LA","TX","OK","VA","WV","KY"))
+plot_crs  <- st_crs(states_se)
+
+cbsa_sf <- analysis_shp_cbsa_growth_ranks %>%
+  filter(primary_state %in% states_se$STUSPS,
+         !is.na(.data[[metric_var]]),
+         cbsa_type == "Metro Area") %>%
+  st_transform(plot_crs)
+
+states_se <- st_transform(states_se, plot_crs)
+
+# Compute quintile labels on the metric
+cbsa_q <- cbsa_sf %>%
+  mutate(
+    growth_q5 = ntile(.data[[metric_var]], 5),
+    growth_q5_lbl = factor(
+      growth_q5,
+      levels = 1:5,
+      labels = c("Bottom 20%","20–40%","40–60%","60–80%","Top 20%")
+    )
+  )
+
+# Top-N for labels/outline (same selection logic as continuous)
+labs_df <- cbsa_q %>%
+  filter(!is.na(.data[[rank_var]])) %>%
+  slice_min(order_by = .data[[rank_var]], n = top_n_labels, with_ties = FALSE) %>%
+  mutate(
+    label_pt = st_point_on_surface(geometry),
+    coords   = st_coordinates(label_pt),
+    x = coords[,1], y = coords[,2]
+  )
+
+topN_outline <- labs_df
+
+bb   <- st_bbox(states_se)
+xlim <- c(bb["xmin"], bb["xmax"]); ylim <- c(bb["ymin"], bb["ymax"])
+
+# --- plot (quintiles) ---
+p_q <- ggplot() +
+
+  # fill by quintile label
+  geom_sf(
+    data = cbsa_q,
+    aes(fill = growth_q5_lbl),
+    color = "white", linewidth = 0.22, alpha = alpha_fill
+  ) +
+  # Add double stroke for state highlighting
+  geom_sf(data = states_se, fill = NA, color = "white", linewidth = 0.7) +
+  geom_sf(data = states_se, fill = NA, color = "grey30", linewidth = 0.35) +
+  # subtle dark edge
+  geom_sf(data = cbsa_q, fill = NA, color = "grey25", linewidth = 0.16) +
+  # bold outline for Top-N
+  geom_sf(data = topN_outline, fill = NA, color = "black", linewidth = 0.45) +
+
+  # labels
+  ggrepel::geom_label_repel(
+    data = labs_df, aes(x = x, y = y, label = NAME),
+    size = 3, seed = 123,
+    fill = alpha("white", 0.75), label.size = 0.2,
+    min.segment.length = 0, max.overlaps = Inf
+  ) +
+
+  # discrete viridis (nice for ordered categories)
+  scale_fill_viridis_d(
+    option = "viridis",
+    direction = 1,
+    name = "Pop Growth Quintile"
+  ) +
+  coord_sf(xlim = xlim, ylim = ylim, expand = FALSE, clip = "on") +
+  labs(
+    title = "Southeast/South Central — CBSA Population Growth (Quintiles)",
+    subtitle = "Fill: Quintiles of Pop CAGR (5y). Bold outline & labels: Top 10 metros"
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    axis.text = element_blank(), axis.title = element_blank(),
+    axis.ticks = element_blank(), panel.grid = element_blank(),
+    legend.title = element_text(face = "bold")
+  )
+
+p_q
+```
+
+```{r Save the file}
+# Best: set both plot and legend backgrounds to white
+p_q_fixed <- p_q +
+  theme(
+    plot.background   = element_rect(fill = "white", color = NA),
+    panel.background  = element_rect(fill = "white", color = NA),
+    legend.background = element_rect(fill = "white", color = NA),
+    legend.key        = element_rect(fill = "white", color = NA)
+  )
+
+ggsave("/Users/danberle/Documents/projects/demographic_analysis/outputs/cbsa_growth_quintiles.png", p_q_fixed,
+       width = 12, height = 8, dpi = 300,
+       bg = "white",
+  device = ragg::agg_png)
+```
+
+We follow this up Bar Charts showing our Top Markets and the growth rates by state
+
+```{r Bar Chart Data Prep}
+metric_var   <- "pop_cagr_5y"
+rank_var     <- "reg_rank_in_cbsa_type"      # swap to "nat_rank" if needed
+top_n_labels <- 20
+
+# You can build from cbsa_sf (sf object) or from your non-sf final KPI table.
+# Here I assume we start from cbsa_sf (already filtered to SE states).
+top20_tbl <- cbsa_sf %>%
+  st_drop_geometry() %>%
+  filter(!is.na(.data[[metric_var]]), !is.na(.data[[rank_var]])) %>%
+  slice_min(order_by = .data[[rank_var]], n = top_n_labels, with_ties = FALSE) %>%
+  arrange(.data[[rank_var]]) %>%
+  mutate(rank_display = row_number())
+```
+
+```{r Continious Bar Chart}
+p_bar_cont <- top20_tbl %>%
+  mutate(metro_lbl = factor(NAME, levels = rev(NAME))) %>%  # order by rank
+  ggplot(aes(x = metro_lbl, y = .data[[metric_var]], fill = .data[[metric_var]])) +
+  geom_col(width = 0.7, color = "grey25") +
+  geom_text(aes(label = percent(.data[[metric_var]], accuracy = 0.1)),
+            hjust = -0.05, size = 3) +
+  scale_y_continuous(labels = percent_format(accuracy = 1),
+                     expand = expansion(mult = c(0, 0.15))) +
+  scale_fill_viridis_c(option = "viridis", name = "Pop CAGR (5y)",
+                       limits = c(min(cbsa_sf$pop_cagr_5y, na.rm=TRUE),
+                                  max(cbsa_sf$pop_cagr_5y, na.rm=TRUE))
+             ) +
+  coord_flip() +
+  labs(
+    title    = "Top 20 Fastest-Growing Metros (SE/South Central)",
+    subtitle = "Ranked by 5-year Population CAGR",
+    x = NULL, y = "Population CAGR (5y)"
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    legend.position = "right",
+    panel.grid.major.y = element_blank(),
+    axis.text.y = element_text(size = 9),
+    plot.title = element_text(face = "bold")
+  )
+
+p_bar_cont
+```
+```{r Export Bar Chart}
+# Best: set both plot and legend backgrounds to white
+p_bar_cont_fixed <- p_bar_cont +
+  theme(
+    plot.background   = element_rect(fill = "white", color = NA),
+    panel.background  = element_rect(fill = "white", color = NA),
+    legend.background = element_rect(fill = "white", color = NA),
+    legend.key        = element_rect(fill = "white", color = NA)
+  )
+
+ggsave("/Users/danberle/Documents/projects/demographic_analysis/outputs/cbsa_growth_top20_markets.png", p_bar_cont_fixed,
+       width = 12, height = 8, dpi = 300,
+       bg = "white",
+  device = ragg::agg_png)
+```
+
+We should update the color scale of our bar chart to be based on all values instead of the top 20 values we maintained
+
+
+```{r Simple Table}
+analysis_final_table <- analysis_shp_cbsa_growth_ranks %>%
+  st_drop_geometry() %>%
+  select(GEOID, NAME, primary_state, region, division, cbsa_type,
+         TOTAL_POP, pop_cagr_5y, MEDIAN_INCOME, MEDIAN_AGE, VACANCY_RATE, 
+         HIGHER_ED_RATE, LFP_RATE, income_cagr_5y,
+         units_per_1k_5y_avg, gdp_real_cagr_5y, unemployment_rate,
+         nat_rank_in_cbsa_type, reg_rank_in_cbsa_type, growth_q5_lbl) %>%
+  mutate(unemployment_rate = unemployment_rate / 100)
+
+write_csv(analysis_final_table, "/Users/danberle/Documents/projects/demographic_analysis/outputs/south_cbsa_final_kpis.csv")
+```
+
+```{r Publication Table}
+top_n <- 20
+
+tbl_top <- analysis_final_table %>%
+  filter(region == "South", cbsa_type == "Metro Area") %>%
+  slice_min(order_by = reg_rank_in_cbsa_type, n = top_n, with_ties = FALSE) %>%
+  transmute(
+    Rank   = reg_rank_in_cbsa_type,
+    Metro  = NAME,
+    State  = primary_state,
+    `Pop CAGR (5y)`       = pop_cagr_5y,          # ensure these are proportions (e.g., 0.034, not 3.4)
+    `Permits / 1k (5y)`   = units_per_1k_5y_avg,
+    `Real GDP CAGR (5y)`  = gdp_real_cagr_5y,     # proportion
+    `Unemp. Rate (2023)`  = unemployment_rate,    # proportion (e.g., 0.031)
+    `Pop (2023)`          = TOTAL_POP
+  ) %>%
+  arrange(Rank)
+
+gt_tbl <- tbl_top %>%
+  gt() %>%
+  fmt_percent(columns = c(`Pop CAGR (5y)`, `Real GDP CAGR (5y)`, `Unemp. Rate (2023)`),
+              decimals = 1) %>%
+  fmt_number(columns = c(`Permits / 1k (5y)`), decimals = 1) %>%
+  fmt_number(columns = c(`Pop (2023)`), decimals = 0, use_seps = TRUE) %>%
+  cols_align(align = "left", columns = c(Metro)) %>%
+  cols_width(
+    Rank ~ px(60),
+    State ~ px(70),
+    Metro ~ px(280),
+    everything() ~ px(130)
+  ) %>%
+  tab_header(
+    title = md("**Top 20 Southern Metros — Key Metrics**"),
+    subtitle = "Population growth, housing pipeline, GDP, and labor market"
+  ) %>%
+  tab_options(
+    table.font.size = px(12),
+    data_row.padding = px(4),
+    table.background.color = "white"
+  )
+
+gt_tbl
+```
+
+```{r Save the table}
+gt::gtsave(gt_tbl, "/Users/danberle/Documents/projects/demographic_analysis/outputs/top20_south_metro_metrics.png",
+           vwidth = 1400, vheight = 900, expand = 5, path = ".")
+```
+
+
+# *Supply & Demand*
+Population Growth vs Permits - Scatter Plot
+
+This section will explore the relationship between growth and permits. We will create a scatter plot to show the relationship between these variables.
+Then, we will explore markets that seem to be under supplied, markets with high growth and high permitting. Lastly, we will look at any outliers.
+
+```{r Housing vs Permits Scatter}
+# ----- INPUTS (tweak these to your column names) -----
+df_scatter <- analysis_final_table %>%
+  filter(region == "South", cbsa_type == "Metro Area") %>%
+  filter(!is.na(pop_cagr_5y), !is.na(units_per_1k_5y_avg))
+
+metric_x   <- "pop_cagr_5y"        # proportion (e.g., 0.029 = 2.9%)
+metric_y   <- "units_per_1k_5y_avg" # permits per 1,000 residents
+size_var   <- "TOTAL_POP"           # population for point size
+label_var  <- "NAME"
+state_var  <- "primary_state"
+rank_var   <- "reg_rank_in_cbsa_type" # regional rank within metros
+top_n_lab  <- 20
+
+# ----- MEDIANS: choose unweighted or weighted (by pop) -----
+# Unweighted medians (simple, transparent)
+x_med <- median(df_scatter[[metric_x]], na.rm = TRUE)
+y_med <- median(df_scatter[[metric_y]], na.rm = TRUE)
+
+# (Optional) Population-weighted medians:
+# wtd_median <- function(x, w) x[order(x)][cumsum(w[order(x)])/sum(w) >= 0.5][1]
+# x_med <- wtd_median(df[[metric_x]], df[[size_var]])
+# y_med <- wtd_median(df[[metric_y]], df[[size_var]])
+
+# ----- TOP 20 for labels & bold outline -----
+top_lab <- df_scatter %>%
+  arrange(!!sym(rank_var)) %>%
+  slice_head(n = top_n_lab)
+
+# Cap point sizes so large metros stand out but don't overwhelm
+size_scaled <- function(x) {
+  s <- scales::rescale(x, to = c(2.2, 10))  # adjust min/max point size here
+  pmin(s, 10)
+}
+
+# Build four rectangles using the medians
+xr <- range(df[[metric_x]], na.rm = TRUE)
+yr <- range(df[[metric_y]], na.rm = TRUE)
+
+# Build plot
+p_scatter <- df_scatter %>%
+  mutate(
+    point_size = size_scaled(.data[[size_var]]),
+    label_txt  = paste0(.data[[label_var]]),
+    # Quadrant classification (optional; useful for tooltip/text)
+    quadrant = case_when(
+      .data[[metric_x]] >= x_med & .data[[metric_y]] >= y_med ~ "Balanced (High/High)",
+      .data[[metric_x]] >= x_med & .data[[metric_y]] <  y_med ~ "Undersupplied (High/Low)",
+      .data[[metric_x]] <  x_med & .data[[metric_y]] >= y_med ~ "Potentially Oversupplied (Low/High)",
+      TRUE ~ "Stagnant (Low/Low)"
+    )
+  ) %>%
+  ggplot(aes(x = .data[[metric_x]], y = .data[[metric_y]])) +
+
+  # Base points
+  geom_point(aes(size = point_size),
+             color = "grey35", fill = "#2C7FB8", alpha = 0.7, shape = 21, stroke = 0.2) +
+
+  # Bold outline for Top 20
+  geom_point(data = top_lab,
+             aes(x = .data[[metric_x]], y = .data[[metric_y]]),
+             shape = 21, size = 3.6, stroke = 1.0, color = "black", fill = NA) +
+
+  # Median quadrant lines
+  geom_vline(xintercept = x_med, linetype = "dashed", color = "grey50", linewidth = 0.4) +
+  geom_hline(yintercept = y_med, linetype = "dashed", color = "grey50", linewidth = 0.4) +
+  
+    # Median value annotations
+  annotate("label", x = x_med, y = -Inf,
+           label = paste0("Median Pop CAGR: ", scales::percent(x_med, 0.1)),
+           vjust = -0.4, size = 3, label.size = 0, fill = scales::alpha("white", 0.9)) +
+  annotate("label", x = -Inf, y = y_med,
+           label = paste0("Median Permits/1k: ", round(y_med, 1)),
+           hjust = -0.05, size = 3, label.size = 0, fill = scales::alpha("white", 0.9)) +
+
+
+  # Quadrant labels (subtle)
+  annotate("label", x = -Inf, y =  Inf, label = "Low Growth / High Permits",
+           hjust = -0.05, vjust = 1.05, size = 3.2, label.size = 0,
+           fill = scales::alpha("white", 0.8), color = "grey20") +
+  annotate("label", x =  Inf, y =  Inf, label = "High Growth / High Permits",
+           hjust =  1.05, vjust = 1.05, size = 3.2, label.size = 0,
+           fill = scales::alpha("white", 0.8), color = "grey20") +
+  annotate("label", x = -Inf, y = -Inf, label = "Low Growth / Low Permits",
+           hjust = -0.05, vjust = -0.05, size = 3.2, label.size = 0,
+           fill = scales::alpha("white", 0.8), color = "grey20") +
+  annotate("label", x =  Inf, y = -Inf, label = "High Growth / Low Permits",
+           hjust =  1.05, vjust = -0.05, size = 3.2, label.size = 0,
+           fill = scales::alpha("white", 0.8), color = "grey20")+
+
+
+  # Labels for Top 20
+  ggrepel::geom_label_repel(
+    data = top_lab,
+    aes(label = paste0(.data[[label_var]])),
+    size = 3, label.size = 0.2, seed = 123,
+    min.segment.length = 0, max.overlaps = Inf,
+    fill = alpha("white", 0.8), color = "black"
+  ) +
+
+  # Scales
+  scale_x_continuous(labels = percent_format(accuracy = 0.1),
+                     name = "Population CAGR (5y)") +
+  scale_y_continuous(name = "Housing Permits per 1,000 Residents (5y avg)") +
+  scale_size_identity(guide = "none") +
+
+  # Theme
+  theme_minimal(base_size = 11) +
+  theme(
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold"),
+    legend.position = "none"
+  ) +
+  labs(
+    title = "Are Southern Metros Building Enough Housing?",
+    subtitle = "Population growth vs. housing permits (5-year averages); Top 20 outlined & labeled",
+    caption = "Notes: Points sized by population. Dashed lines mark regional medians."
+  )
+
+p_scatter
+```
+```{r Save Scatter chart}
+# Best: set both plot and legend backgrounds to white
+p_scatter <- p_scatter +
+  theme(
+    plot.background   = element_rect(fill = "white", color = NA),
+    panel.background  = element_rect(fill = "white", color = NA),
+    legend.background = element_rect(fill = "white", color = NA),
+    legend.key        = element_rect(fill = "white", color = NA)
+  )
+
+ggsave("/Users/danberle/Documents/projects/demographic_analysis/outputs/cbsa_growth_vs_housing_supply_scatter.png", p_scatter,
+       width = 12, height = 8, dpi = 300,
+       bg = "white",
+  device = ragg::agg_png)
+```
+
+```{r Scatter with medians and quadrant labels}
+# We need to improve the visual for quadrant labels that are stuck in the middle
+df <- analysis_final_table %>%
+  filter(region == "South", cbsa_type == "Metro Area") %>%
+  filter(!is.na(pop_cagr_5y), !is.na(units_per_1k_5y_avg))
+
+metric_x <- "pop_cagr_5y"
+metric_y <- "units_per_1k_5y_avg"
+rank_var <- "reg_rank_in_cbsa_type"
+
+# Medians
+x_med <- median(df[[metric_x]], na.rm = TRUE)
+y_med <- median(df[[metric_y]], na.rm = TRUE)
+
+# Top 20 for labels
+top_lab <- df %>% arrange(.data[[rank_var]]) %>% slice_head(n = 20)
+
+p_scatter <- ggplot(df, aes(x = .data[[metric_x]], y = .data[[metric_y]])) +
+  geom_point(shape = 21, size = 3, stroke = 0.2, color = "grey35",
+             fill = "#2C7FB8", alpha = 0.7) +
+
+  # Outline Top 20
+  geom_point(data = top_lab, shape = 21, size = 3.6, stroke = 1.0,
+             color = "black", fill = NA) +
+
+  # Median lines
+  geom_vline(xintercept = x_med, linetype = "dashed", color = "grey50", linewidth = 0.4) +
+  geom_hline(yintercept = y_med, linetype = "dashed", color = "grey50", linewidth = 0.4) +
+
+  # Median value annotations
+  annotate("label", x = x_med, y = min(df[[metric_y]], na.rm=TRUE),
+           label = paste0("Median Pop CAGR: ", percent(x_med, 0.1)),
+           vjust = 1.2, size = 3, label.size = 0, fill = alpha("white", 0.8)) +
+  annotate("label", x = min(df[[metric_x]], na.rm=TRUE), y = y_med,
+           label = paste0("Median Permits/1k: ", round(y_med,1)),
+           hjust = -0.05, size = 3, label.size = 0, fill = alpha("white", 0.8)) +
+
+  # Quadrant labels
+  annotate("text", x = x_med*1.10, y = y_med*1.12, label = "High Growth / High Permits",
+           hjust = 0, vjust = 0, size = 3.2, color = "grey30") +
+  annotate("text", x = x_med*1.10, y = y_med*0.88, label = "High Growth / Low Permits",
+           hjust = 0, vjust = 1, size = 3.2, color = "grey30") +
+  annotate("text", x = x_med*0.90, y = y_med*1.12, label = "Low Growth / High Permits",
+           hjust = 1, vjust = 0, size = 3.2, color = "grey30") +
+  annotate("text", x = x_med*0.90, y = y_med*0.88, label = "Low Growth / Low Permits",
+           hjust = 1, vjust = 1, size = 3.2, color = "grey30") +
+
+  # Labels for Top 20
+  ggrepel::geom_label_repel(
+    data = top_lab,
+    aes(label = paste0(NAME, ", ", primary_state)),
+    size = 3, label.size = 0.2, seed = 123,
+    min.segment.length = 0, max.overlaps = Inf,
+    fill = alpha("white", 0.8), color = "black") +
+
+  scale_x_continuous(labels = percent_format(accuracy = 0.1),
+                     name = "Population CAGR (5y)") +
+  scale_y_continuous(name = "Housing Permits per 1,000 Residents (5y avg)") +
+  theme_minimal(base_size = 11) +
+  theme(panel.grid.minor = element_blank(),
+        legend.position = "none",
+        plot.title = element_text(face = "bold")) +
+  labs(title = "Are Southern Metros Building Enough Housing?",
+       subtitle = "Population growth vs. permitting; Top 20 outlined and labeled",
+       caption = "Dashed lines mark Southern medians.")
+
+p_scatter
+```
+
+Next, we will look at Vacancy vs Supply and Pop
+```{r Vacancy Rate}
+top20 <- analysis_final_table %>%
+  filter(region == "South", cbsa_type == "Metro Area",
+         !is.na(pop_cagr_5y), !is.na(VACANCY_RATE)) %>%
+  arrange(desc(pop_cagr_5y)) %>%
+  slice_head(n = 20) %>%
+  mutate(metro_lbl = NAME)
+
+vac_median <- analysis_final_table %>%
+  filter(region == "South", cbsa_type == "Metro Area") %>%
+  summarize(vac_med = median(VACANCY_RATE, na.rm = TRUE)) %>% pull(vac_med)
+
+p_vac <- top20 %>%
+  mutate(metro_lbl = factor(metro_lbl, levels = rev(metro_lbl))) %>%
+  ggplot(aes(x = metro_lbl, y = VACANCY_RATE)) +
+  geom_col(width = 0.7, fill = "#7F8DAA", color = "grey25") +
+  geom_hline(yintercept = vac_median, linetype = "dashed", color = "grey40") +
+  annotate("label", x = Inf, y = vac_median,
+           label = paste0("Regional median: ", percent(vac_median, 0.1)),
+           hjust = 1.02, vjust = -0.2, size = 3, label.size = 0,
+           fill = alpha("white", 0.9)) +
+  scale_y_continuous(labels = percent_format(accuracy = 0.1)) +
+  coord_flip() +
+  labs(
+    title = "Vacancy Rates — Top 20 Fastest-Growing Southern Metros",
+    subtitle = "Dashed line indicates regional median vacancy (metro areas only)",
+    x = NULL, y = "Vacancy Rate (ACS)"
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(panel.grid.major.y = element_blank(),
+        plot.title = element_text(face = "bold"))
+p_vac
+```
+```{r Save Vacancy chart}
+# Best: set both plot and legend backgrounds to white
+p_vac <- p_vac +
+  theme(
+    plot.background   = element_rect(fill = "white", color = NA),
+    panel.background  = element_rect(fill = "white", color = NA),
+    legend.background = element_rect(fill = "white", color = NA),
+    legend.key        = element_rect(fill = "white", color = NA)
+  )
+
+ggsave("/Users/danberle/Documents/projects/demographic_analysis/outputs/cbsa_top_market_vacancy.png", p_vac,
+       width = 12, height = 8, dpi = 300,
+       bg = "white",
+  device = ragg::agg_png)
+```
+
+
+# *Under Supplied Fast Growers*
+Here we will create a Supply Gap metric and then visualize our top markets. We will calculate Supply Gap using the Z-Score method and also creating a flag of markets that are in the top growth quartile and below median in permits.
+
+It can also be helpful to visualize top markets in terms of Z-Score if we break them out by the quadrant we used before. So we should save the classification from the scatter plot.
+
+```{r Supply Gap DF}
+# Base df (adjust names if needed)
+df_supply_gap <- analysis_final_table %>%
+  filter(region == "South", cbsa_type == "Metro Area") %>%
+  filter(!is.na(pop_cagr_5y), !is.na(units_per_1k_5y_avg))
+
+# Medians for quadrants (unweighted; simple & transparent)
+x_med <- median(df_supply_gap$pop_cagr_5y, na.rm = TRUE)
+y_med <- median(df_supply_gap$units_per_1k_5y_avg, na.rm = TRUE)
+
+# Classification + supply gap
+df_supply_gap_class <- df_supply_gap %>%
+  mutate(
+    # z-scores
+    pop_z     = as.numeric(scale(pop_cagr_5y)),
+    permits_z = as.numeric(scale(units_per_1k_5y_avg)),
+    supply_gap = pop_z - permits_z,
+
+    # “High growth, low supply” flags (Method A thresholds)
+    pop_quartile = ntile(pop_cagr_5y, 4),
+    below_perm_median = units_per_1k_5y_avg < y_med,
+    high_growth_low_supply = pop_quartile == 4 & below_perm_median,
+
+    # Quadrant classification (to match your scatter)
+    quadrant_class = case_when(
+      pop_cagr_5y >= x_med & units_per_1k_5y_avg >= y_med ~ "High Growth / High Permits",
+      pop_cagr_5y >= x_med & units_per_1k_5y_avg <  y_med ~ "High Growth / Low Permits",
+      pop_cagr_5y <  x_med & units_per_1k_5y_avg >= y_med ~ "Low Growth / High Permits",
+      TRUE ~ "Low Growth / Low Permits"
+    ),
+
+    # Compact label
+    metro_lbl = NAME
+  )
+```
+
+```{r Supply Gap Visual}
+# Palette to match (or echo) your scatter’s quadrant tints
+quad_pal <- c(
+  "High Growth / High Permits" = "#66bb6a",  # green-ish
+  "High Growth / Low Permits"  = "#ffb74d",  # amber (undersupplied)
+  "Low Growth / High Permits"  = "#42a5f5",  # blue
+  "Low Growth / Low Permits"   = "#bdbdbd"   # grey
+)
+
+top_n <- 20
+
+plot_df <- df_supply_gap_class %>%
+  arrange(desc(supply_gap)) %>%
+  slice_head(n = top_n) %>%
+  mutate(metro_lbl = factor(metro_lbl, levels = rev(metro_lbl)))
+
+p_supply_gap <- ggplot(plot_df, aes(x = metro_lbl, y = supply_gap, fill = quadrant_class)) +
+  geom_col(width = 0.7, color = "grey25") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
+  geom_text(aes(label = round(supply_gap, 2)), hjust = -0.06, size = 3) +
+  scale_fill_manual(values = quad_pal, name = "Quadrant (from scatter)") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.12))) +
+  coord_flip() +
+  labs(
+    title = "Top Supply-Gap Metros in the South",
+    subtitle = "Supply gap = z(Pop CAGR 5y) − z(Permits per 1k, 5y avg); color shows scatter-plot quadrant",
+    x = NULL, y = "Supply Gap (standardized units)"
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    panel.grid.major.y = element_blank(),
+    legend.position = "right",
+    plot.title = element_text(face = "bold")
+  )
+
+p_supply_gap
+```
+
+```{r Export Supply Gap chart}
+# Best: set both plot and legend backgrounds to white
+p_supply_gap <- p_supply_gap +
+  theme(
+    plot.background   = element_rect(fill = "white", color = NA),
+    panel.background  = element_rect(fill = "white", color = NA),
+    legend.background = element_rect(fill = "white", color = NA),
+    legend.key        = element_rect(fill = "white", color = NA)
+  )
+
+ggsave("/Users/danberle/Documents/projects/demographic_analysis/outputs/cbsa_top_supply_gap.png", p_supply_gap,
+       width = 12, height = 8, dpi = 300,
+       bg = "white",
+  device = ragg::agg_png)
+```
+
+```{r Updated Vacancy Rate}
+# Assume df_supply_gap_class already exists with quadrant_class assigned
+# If not, you can re-use the classification logic from the supply gap step.
+
+top20 <- df_supply_gap_class %>%
+  filter(region == "South", cbsa_type == "Metro Area",
+         !is.na(pop_cagr_5y), !is.na(VACANCY_RATE)) %>%
+  arrange(desc(pop_cagr_5y)) %>%
+  slice_head(n = 20) %>%
+  mutate(metro_lbl = NAME)
+
+vac_median <- df_supply_gap_class %>%
+  filter(region == "South", cbsa_type == "Metro Area") %>%
+  summarize(vac_med = median(VACANCY_RATE, na.rm = TRUE)) %>% pull(vac_med)
+
+p_vac <- top20 %>%
+  mutate(metro_lbl = factor(metro_lbl, levels = rev(metro_lbl))) %>%
+  ggplot(aes(x = metro_lbl, y = VACANCY_RATE, fill = quadrant_class)) +
+  geom_col(width = 0.7, color = "grey25") +
+  geom_hline(yintercept = vac_median, linetype = "dashed", color = "grey40") +
+  annotate("label", x = Inf, y = vac_median,
+           label = paste0("Regional median: ", percent(vac_median, 0.1)),
+           hjust = 1.02, vjust = -0.2, size = 3, label.size = 0,
+           fill = alpha("white", 0.9)) +
+  scale_fill_manual(values = quad_pal, name = "Quadrant (from scatter)") +
+  scale_y_continuous(labels = percent_format(accuracy = 0.1)) +
+  coord_flip() +
+  labs(
+    title = "Vacancy Rates — Top 20 Fastest-Growing Southern Metros",
+    subtitle = "Color shows scatter-plot quadrant; dashed line = regional median vacancy",
+    x = NULL, y = "Vacancy Rate (ACS)"
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    panel.grid.major.y = element_blank(),
+    plot.title = element_text(face = "bold")
+  )
+
+p_vac
+```
+
+```{r Export Vacancy Updated chart}
+# Best: set both plot and legend backgrounds to white
+p_vac <- p_vac +
+  theme(
+    plot.background   = element_rect(fill = "white", color = NA),
+    panel.background  = element_rect(fill = "white", color = NA),
+    legend.background = element_rect(fill = "white", color = NA),
+    legend.key        = element_rect(fill = "white", color = NA)
+  )
+
+ggsave("/Users/danberle/Documents/projects/demographic_analysis/outputs/cbsa_top_market_vacancy.png", p_vac,
+       width = 12, height = 8, dpi = 300,
+       bg = "white",
+  device = ragg::agg_png)
+```
+
+
+```{r Simple Supply Gap}
+df_gap <- analysis_final_table %>%
+  filter(region == "South", cbsa_type == "Metro Area") %>%
+  filter(!is.na(pop_cagr_5y), !is.na(units_per_1k_5y_avg)) %>%
+  mutate(
+    pop_quartile = ntile(pop_cagr_5y, 4),
+    permits_median = units_per_1k_5y_avg < median(units_per_1k_5y_avg, na.rm = TRUE),
+    undersupplied_flag = pop_quartile == 4 & permits_median
+  )
+
+# Pull the subset for the article
+undersupplied_markets <- df_gap %>%
+  filter(undersupplied_flag) %>%
+  arrange(desc(pop_cagr_5y)) %>%
+  select(NAME, primary_state, pop_cagr_5y, units_per_1k_5y_avg,
+         gdp_real_cagr_5y, unemployment_rate, TOTAL_POP)
+```
+
+```{r Continious Supply Gap}
+df_gap <- df_gap %>%
+  mutate(
+    pop_z = scale(pop_cagr_5y)[,1],
+    permits_z = scale(units_per_1k_5y_avg)[,1],
+    supply_gap = pop_z - permits_z
+  )
+
+top_supply_gaps <- df_gap %>%
+  arrange(desc(supply_gap)) %>%
+  slice_head(n = 10) %>%
+  select(NAME, primary_state, pop_cagr_5y, units_per_1k_5y_avg,
+         supply_gap, gdp_real_cagr_5y, unemployment_rate, TOTAL_POP)
+```
+
+```{r Supply Gap Chart}
+df_gap <- analysis_final_table %>%
+  filter(region == "South", cbsa_type == "Metro Area") %>%
+  filter(!is.na(pop_cagr_5y), !is.na(units_per_1k_5y_avg))
+
+# Thresholds
+perm_med <- median(df_gap$units_per_1k_5y_avg, na.rm = TRUE)
+
+df_gap <- df_gap %>%
+  mutate(
+    pop_quartile   = ntile(pop_cagr_5y, 4),
+    undersupplied  = pop_quartile == 4 & units_per_1k_5y_avg < perm_med,
+    pop_z          = as.numeric(scale(pop_cagr_5y)),
+    permits_z      = as.numeric(scale(units_per_1k_5y_avg)),
+    supply_gap     = pop_z - permits_z,
+    metro_lbl      = str_trunc(paste0(NAME, ", ", primary_state), 38)
+  )
+
+# Pick the story you want to show:
+# A) Only the undersupplied fast-growers, ranked by supply_gap
+plot_df <- df_gap %>%
+  filter(undersupplied) %>%
+  arrange(desc(supply_gap)) %>%
+  slice_head(n = 10)   # change to 15/20 if you like
+
+# B) Or: top N overall by supply_gap (comment A, uncomment B)
+# plot_df <- df_gap %>% arrange(desc(supply_gap)) %>% slice_head(n = 10)
+
+# Bar chart
+p_gap <- plot_df %>%
+  mutate(metro_lbl = factor(metro_lbl, levels = rev(metro_lbl))) %>%
+  ggplot(aes(x = metro_lbl, y = supply_gap)) +
+  geom_col(width = 0.7, fill = "#2C7FB8", color = "grey25") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
+  geom_text(aes(label = round(supply_gap, 2)), hjust = -0.05, size = 3) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.12))) +
+  coord_flip() +
+  labs(
+    title = "Undersupplied Fast-Growers — Supply Gap",
+    subtitle = "Supply gap = z(Pop CAGR 5y) − z(Permits per 1k, 5y avg); Top markets where growth outpaces permitting",
+    x = NULL, y = "Supply Gap (standardized units)"
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(panel.grid.major.y = element_blank(),
+        plot.title = element_text(face = "bold"))
+p_gap
+```
+
+
+
+# *Demographics*
+Education 
+Age
+Labor Force Participation
+
+```{r Median Age Comparison}
+# Split metros into top 20 and bottom 20 by growth
+df_age <- analysis_final_table %>%
+  filter(region == "South", cbsa_type == "Metro Area", !is.na(pop_cagr_5y), !is.na(MEDIAN_AGE)) %>%
+  mutate(rank_growth = min_rank(desc(pop_cagr_5y))) %>%
+  mutate(group = case_when(
+    rank_growth <= 20 ~ "Top 20 by Growth",
+    rank_growth > (n() - 20) ~ "Bottom 20 by Growth",
+    TRUE ~ "Middle"
+  ))
+
+p_age <- df_age %>%
+  filter(group %in% c("Top 20 by Growth", "Bottom 20 by Growth")) %>%
+  ggplot(aes(x = group, y = MEDIAN_AGE, fill = group)) +
+  geom_boxplot(alpha = 0.7, width = 0.6) +
+  scale_fill_manual(values = c("Top 20 by Growth" = "#2C7FB8", "Bottom 20 by Growth" = "#bdbdbd")) +
+  labs(
+    title = "Median Age in Southern Metros",
+    subtitle = "Comparing fastest- and slowest-growing metros",
+    x = NULL, y = "Median Age (ACS)"
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(legend.position = "none")
+p_age
+```
+Interesting insight that the median ages seem very close but the distributions of the ages for the markets are very different.
+
+```{r Export Age chart}
+# Best: set both plot and legend backgrounds to white
+p_age <- p_age +
+  theme(
+    plot.background   = element_rect(fill = "white", color = NA),
+    panel.background  = element_rect(fill = "white", color = NA),
+    legend.background = element_rect(fill = "white", color = NA),
+    legend.key        = element_rect(fill = "white", color = NA)
+  )
+
+ggsave("/Users/danberle/Documents/projects/demographic_analysis/outputs/cbsa_top_vs_bottom_age.png", p_age,
+       width = 12, height = 8, dpi = 300,
+       bg = "white",
+  device = ragg::agg_png)
+```
+
+
+```{r Education Scatter Plot}
+df_edu <- analysis_final_table %>%
+  filter(region == "South", cbsa_type == "Metro Area", !is.na(pop_cagr_5y), !is.na(HIGHER_ED_RATE)) %>%
+  mutate(HIGHER_ED_RATE = HIGHER_ED_RATE / 100)
+
+p_edu <- ggplot(df_edu, aes(x = pop_cagr_5y, y = HIGHER_ED_RATE, label = NAME)) +
+  geom_point(aes(size = TOTAL_POP, color = division), alpha = 0.7) +
+  geom_smooth(method = "lm", se = FALSE, color = "grey40", linetype = "dashed") +
+  scale_x_continuous(labels = scales::percent_format(accuracy = 0.1)) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  labs(
+    title = "Population Growth vs Educational Attainment",
+    subtitle = "% of population with Bachelor's+ (ACS, 2023)",
+    x = "Population CAGR (5y)", y = "% with Bachelor’s Degree or Higher",
+    color = "State", size = "Population"
+  ) +
+  theme_minimal(base_size = 11)
+p_edu
+```
+```{r Export Education Chart}
+# Best: set both plot and legend backgrounds to white
+p_edu <- p_edu +
+  theme(
+    plot.background   = element_rect(fill = "white", color = NA),
+    panel.background  = element_rect(fill = "white", color = NA),
+    legend.background = element_rect(fill = "white", color = NA),
+    legend.key        = element_rect(fill = "white", color = NA)
+  )
+
+ggsave("/Users/danberle/Documents/projects/demographic_analysis/outputs/cbsa_pop_growth_vs_education.png", p_edu,
+       width = 12, height = 8, dpi = 300,
+       bg = "white",
+  device = ragg::agg_png)
+```
+
+
+```{r Labor Force Participation}
+df_lfpr <- acs_silver %>%   # assuming you have yearly ACS silver with "in_labor_force" and "eligible_labor_force"
+  mutate(LFP_RATE = labor_force_participation_rate / 100,
+         GEOID = as.character(GEOID))
+
+# Rank by growth
+growth_ranks <- analysis_final_table %>%
+  filter(cbsa_type == "Metro Area") %>%
+  select(GEOID, pop_cagr_5y) %>%
+  mutate(rank_growth = min_rank(desc(pop_cagr_5y))) %>%
+  mutate(group = case_when(
+    rank_growth <= 20 ~ "Top 20 by Growth",
+    rank_growth > (n() - 20) ~ "Bottom 20 by Growth",
+    TRUE ~ "Middle"
+  ))
+
+df_lfpr <- df_lfpr %>%
+  right_join(growth_ranks, by = "GEOID") %>%
+  filter(year %in% c(2013, 2023))
+
+p_lfpr <- df_lfpr %>%
+  filter(group %in% c("Top 20 by Growth", "Bottom 20 by Growth")) %>%
+  ggplot(aes(x = year, y = LFP_RATE, group = NAME, color = group)) +
+  geom_line(alpha = 0.6) +
+  geom_point(size = 2) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  labs(
+    title = "Labor Force Participation, 2013–2023",
+    subtitle = "Comparing fastest- and slowest-growing Southern metros",
+    x = NULL, y = "Labor Force Participation Rate",
+    color = NULL
+  ) +
+  theme_minimal(base_size = 11)
+p_lfpr
+```
+
+```{r Export LFPR Chart}
+# Best: set both plot and legend backgrounds to white
+p_lfpr <- p_lfpr +
+  theme(
+    plot.background   = element_rect(fill = "white", color = NA),
+    panel.background  = element_rect(fill = "white", color = NA),
+    legend.background = element_rect(fill = "white", color = NA),
+    legend.key        = element_rect(fill = "white", color = NA)
+  )
+
+ggsave("/Users/danberle/Documents/projects/demographic_analysis/outputs/cbsa_lfpr_change.png", p_lfpr,
+       width = 12, height = 8, dpi = 300,
+       bg = "white",
+  device = ragg::agg_png)
+```
+
+# *Economics*
+How does Population Growth compare to GDP Growth?
+Bubble Plot: X = pop CAGR, Y = GDP CAGR, bubble size = income level.
+Slope Chart: Pop growth vs income growth (metro by metro).
+
+```{r Pop Growth vs GDP Growth}
+econ_df <- analysis_final_table %>%
+  filter(region == "South", cbsa_type == "Metro Area") %>%
+  filter(!is.na(pop_cagr_5y), !is.na(gdp_real_cagr_5y), !is.na(MEDIAN_INCOME))
+
+x_med <- median(econ_df$pop_cagr_5y, na.rm = TRUE)
+y_med <- median(econ_df$gdp_real_cagr_5y, na.rm = TRUE)
+
+# Select Top 20 by population growth
+top_lab <- econ_df %>%
+  arrange(desc(pop_cagr_5y)) %>%
+  slice_head(n = 20)
+
+# GDP vs Pop Bubble with labels
+p_gdp_v_pop_bubble <- ggplot(econ_df,
+                   aes(x = pop_cagr_5y, y = gdp_real_cagr_5y,
+                       size = TOTAL_POP, color = division)) +
+  geom_point(alpha = 0.7, stroke = 0.2) +
+  # regression trend (this was missing before)
+  geom_smooth(method = "lm", se = FALSE, color = "grey35",
+              linetype = "longdash", linewidth = 0.8,
+              inherit.aes = FALSE, show.legend = FALSE,
+              mapping = aes(x = pop_cagr_5y, y = gdp_real_cagr_5y)) +
+  geom_point(data = top_lab, shape = 21, size = 4, stroke = 1.0,
+             color = "black", fill = NA, show.legend = FALSE) +
+  ggrepel::geom_text_repel(
+    data = top_lab,
+    aes(label = NAME),
+    size = 3, seed = 123,
+    box.padding = 0.3, max.overlaps = Inf, show.legend = FALSE
+  ) +
+  geom_vline(xintercept = x_med, linetype = "dashed", color = "grey60") +
+  geom_hline(yintercept = y_med, linetype = "dashed", color = "grey60") +
+  scale_x_continuous(labels = scales::percent_format(accuracy = 0.1),
+                     name = "Total Population CAGR (5y)") +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 0.1),
+                     name = "Real GDP CAGR (5y)") +
+  scale_size_continuous(name = "Total Population", labels = scales::label_comma(),
+                        range = c(1.8, 9)) +
+  guides(size = guide_legend(override.aes = list(alpha = 0.9, color = "grey50", stroke = 0))) +
+
+  labs(title = "Are Southern Metros Converting Population Growth into Higher GDP?",
+       subtitle = "Top 20 growth metros outlined and labeled",
+       color = "Division") +
+  theme_minimal(base_size = 11) +
+  theme(plot.title = element_text(face = "bold"))
+p_gdp_v_pop_bubble
+```
+
+```{r Save GDP Growth}
+# Best: set both plot and legend backgrounds to white
+p_gdp_v_pop_bubble <- p_gdp_v_pop_bubble +
+  theme(
+    plot.background   = element_rect(fill = "white", color = NA),
+    panel.background  = element_rect(fill = "white", color = NA),
+    legend.background = element_rect(fill = "white", color = NA),
+    legend.key        = element_rect(fill = "white", color = NA)
+  )
+
+ggsave("/Users/danberle/Documents/projects/demographic_analysis/outputs/cbsa_gdp_growth_vs_population.png", p_gdp_v_pop_bubble,
+       width = 12, height = 8, dpi = 300,
+       bg = "white",
+  device = ragg::agg_png)
+```
+
+```{r Income vs Population}
+econ_df <- analysis_final_table %>%
+  filter(region == "South", cbsa_type == "Metro Area") %>%
+  filter(!is.na(pop_cagr_5y), !is.na(income_cagr_5y), !is.na(MEDIAN_INCOME))
+
+x_med <- median(econ_df$pop_cagr_5y, na.rm = TRUE)
+y_med <- median(econ_df$income_cagr_5y, na.rm = TRUE)
+
+# Select Top 20 by population growth
+top_lab <- econ_df %>%
+  filter(region == "South", cbsa_type == "Metro Area") %>%
+  arrange(desc(pop_cagr_5y)) %>%
+  slice_head(n = 20)
+
+# Population vs Income Bubble with labels
+p_inc_v_pop_bubble <- ggplot(econ_df,
+                   aes(x = pop_cagr_5y, y = income_cagr_5y,
+                       size = TOTAL_POP, color = division)) +
+  geom_point(alpha = 0.7, stroke = 0.2) +
+  # regression trend (this was missing before)
+  geom_smooth(method = "lm", se = FALSE, color = "grey35",
+              linetype = "longdash", linewidth = 0.8,
+              inherit.aes = FALSE, show.legend = FALSE,
+              mapping = aes(x = pop_cagr_5y, y = income_cagr_5y)) +
+  geom_point(data = top_lab, shape = 21, size = 4, stroke = 1.0,
+             color = "black", fill = NA, show.legend = FALSE) +
+  ggrepel::geom_text_repel(
+    data = top_lab,
+    aes(label = NAME),
+    size = 3, seed = 123,
+    box.padding = 0.3, max.overlaps = Inf, show.legend = FALSE
+  ) +
+  geom_vline(xintercept = x_med, linetype = "dashed", color = "grey60") +
+  geom_hline(yintercept = y_med, linetype = "dashed", color = "grey60") +
+  scale_x_continuous(labels = scales::percent_format(accuracy = 0.1),
+                     name = "Total Population CAGR (5y)") +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 0.1),
+                     name = "Median Income CAGR (5y)") +
+  scale_size_continuous(name = "Total Population", labels = scales::label_comma(),
+                        range = c(1.8, 9)) +
+  guides(size = guide_legend(override.aes = list(alpha = 0.9, color = "grey50", stroke = 0))) +
+
+  labs(title = "Are Southern Metros Converting Population Growth into Higher Income?",
+       subtitle = "Top 20 growth metros outlined and labeled",
+       color = "Division") +
+  theme_minimal(base_size = 11) +
+  theme(plot.title = element_text(face = "bold"))
+p_inc_v_pop_bubble
+```
+
+This is an interesting relationship. Seems like a few outliers are really skewing the line to the right.
+
+```{r Save Income Growth}
+# Best: set both plot and legend backgrounds to white
+p_inc_v_pop_bubble <- p_inc_v_pop_bubble +
+  theme(
+    plot.background   = element_rect(fill = "white", color = NA),
+    panel.background  = element_rect(fill = "white", color = NA),
+    legend.background = element_rect(fill = "white", color = NA),
+    legend.key        = element_rect(fill = "white", color = NA)
+  )
+
+ggsave("/Users/danberle/Documents/projects/demographic_analysis/outputs/cbsa_income_growth_vs_population.png", p_inc_v_pop_bubble,
+       width = 12, height = 8, dpi = 300,
+       bg = "white",
+  device = ragg::agg_png)
+```
+
+
+```{r Income vs GDP}
+# Base df for this chart
+econ_df <- analysis_final_table %>%
+  filter(region == "South", cbsa_type == "Metro Area") %>%
+  filter(!is.na(gdp_real_cagr_5y), !is.na(income_cagr_5y),
+         !is.na(MEDIAN_INCOME), !is.na(TOTAL_POP))
+
+x_med <- median(econ_df$gdp_real_cagr_5y, na.rm = TRUE)
+y_med <- median(econ_df$income_cagr_5y, na.rm = TRUE)
+
+# Select Top 20 by population growth
+top_lab <- econ_df %>%
+  arrange(desc(pop_cagr_5y)) %>%
+  slice_head(n = 20)
+
+# GDP vs Income Bubble with labels
+p_inc_v_gdp_bubble <- ggplot(econ_df,
+                   aes(x = gdp_real_cagr_5y, y = income_cagr_5y,
+                       size = TOTAL_POP, color = division)) +
+  geom_point(alpha = 0.7, stroke = 0.2) +
+  # regression trend (this was missing before)
+  geom_smooth(method = "lm", se = FALSE, color = "grey35",
+              linetype = "longdash", linewidth = 0.8,
+              inherit.aes = FALSE, show.legend = FALSE,
+              mapping = aes(x = gdp_real_cagr_5y, y = income_cagr_5y)) +
+  geom_point(data = top_lab, shape = 21, size = 4, stroke = 1.0,
+             color = "black", fill = NA, show.legend = FALSE) +
+  ggrepel::geom_text_repel(
+    data = top_lab,
+    aes(label = NAME),
+    size = 3, seed = 123,
+    box.padding = 0.3, max.overlaps = Inf, show.legend = FALSE
+  ) +
+  geom_vline(xintercept = x_med, linetype = "dashed", color = "grey60") +
+  geom_hline(yintercept = y_med, linetype = "dashed", color = "grey60") +
+  scale_x_continuous(labels = scales::percent_format(accuracy = 0.1),
+                     name = "Real GDP CAGR (5y)") +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 0.1),
+                     name = "Median Income CAGR (5y)") +
+  scale_size_continuous(name = "Total Population", labels = scales::label_comma(),
+                        range = c(1.8, 9)) +
+  guides(size = guide_legend(override.aes = list(alpha = 0.9, color = "grey50", stroke = 0))) +
+
+  labs(title = "Are Southern Metros Converting GDP Growth into Higher Income?",
+       subtitle = "Top 20 growth metros outlined and labeled",
+       color = "Division") +
+  theme_minimal(base_size = 11) +
+  theme(plot.title = element_text(face = "bold"))
+p_inc_v_gdp_bubble
+```
+
+```{r Save Income vs GDP}
+# Best: set both plot and legend backgrounds to white
+p_inc_v_gdp_bubble <- p_inc_v_gdp_bubble +
+  theme(
+    plot.background   = element_rect(fill = "white", color = NA),
+    panel.background  = element_rect(fill = "white", color = NA),
+    legend.background = element_rect(fill = "white", color = NA),
+    legend.key        = element_rect(fill = "white", color = NA)
+  )
+
+ggsave("/Users/danberle/Documents/projects/demographic_analysis/outputs/cbsa_gdp_vs_income_growth.png", p_inc_v_gdp_bubble,
+       width = 12, height = 8, dpi = 300,
+       bg = "white",
+  device = ragg::agg_png)
+```
+
+```{r Fundamentals Negative Gap}
+econ_gap <- analysis_final_table %>%
+  filter(region == "South", cbsa_type == "Metro Area") %>%
+  transmute(
+    GEOID, NAME, primary_state, TOTAL_POP,
+    pop = pop_cagr_5y,
+    gdp = gdp_real_cagr_5y,
+    inc = income_cagr_5y,
+    unemp = unemployment_rate
+  ) %>%
+  filter(!is.na(pop), !is.na(gdp), !is.na(inc)) %>%
+  mutate(
+    z_pop = as.numeric(scale(pop)),
+    z_gdp = as.numeric(scale(gdp)),
+    z_inc = as.numeric(scale(inc)),
+    fundamentals_gap = (z_gdp + z_inc)/2 - z_pop
+  )
+
+# Rank top/bottom outliers
+top_pos_gap <- econ_gap %>% arrange(desc(fundamentals_gap)) %>% slice_head(n = 10)
+top_neg_gap <- econ_gap %>% arrange(fundamentals_gap) %>% slice_head(n = 10)
+
+# Visual: ordered bar chart of negative gaps (population > economics)
+gap_neg_plot <- econ_gap %>%
+  arrange(fundamentals_gap) %>%
+  slice_head(n = 15) %>%
+  mutate(lbl = factor(NAME,
+                      levels = NAME)) %>%
+  ggplot(aes(x = lbl, y = fundamentals_gap)) +
+  geom_col(fill = "#ffb74d", color = "grey25") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
+  coord_flip() +
+  labs(title = "Where Population Is Outrunning the Economics",
+       subtitle = "Fundamentals gap = avg z(GDP growth, income growth) − z(pop growth)",
+       x = NULL, y = "Fundamentals Gap (z-score units)") +
+  theme_minimal(base_size = 11) +
+  theme(panel.grid.major.y = element_blank(),
+        plot.title = element_text(face = "bold"))
+gap_neg_plot
+```
+```{r Save Fundamentals Negative}
+# Best: set both plot and legend backgrounds to white
+gap_neg_plot <- gap_neg_plot +
+  theme(
+    plot.background   = element_rect(fill = "white", color = NA),
+    panel.background  = element_rect(fill = "white", color = NA),
+    legend.background = element_rect(fill = "white", color = NA),
+    legend.key        = element_rect(fill = "white", color = NA)
+  )
+
+ggsave("/Users/danberle/Documents/projects/demographic_analysis/outputs/cbsa_fundamental_gap_negative.png", gap_neg_plot,
+       width = 12, height = 8, dpi = 300,
+       bg = "white",
+  device = ragg::agg_png)
+```
+
+
+```{r Fundamentals Positive}
+# Visual: ordered bar chart of negative gaps (population > economics)
+gap_pos_plot <- econ_gap %>%
+  arrange(desc(fundamentals_gap)) %>%
+  slice_head(n = 15) %>%
+  mutate(lbl = factor(NAME,
+                      levels = NAME)) %>%
+  ggplot(aes(x = lbl, y = fundamentals_gap)) +
+  geom_col(fill = "#ffb74d", color = "grey25") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
+  coord_flip() +
+  labs(title = "Where Economics Is Outrunning the Population",
+       subtitle = "Fundamentals gap = avg z(GDP growth, income growth) − z(pop growth)",
+       x = NULL, y = "Fundamentals Gap (z-score units)") +
+  theme_minimal(base_size = 11) +
+  theme(panel.grid.major.y = element_blank(),
+        plot.title = element_text(face = "bold"))
+gap_pos_plot
+```
+
+```{r Save Fundamentals Positive}
+# Best: set both plot and legend backgrounds to white
+gap_pos_plot <- gap_pos_plot +
+  theme(
+    plot.background   = element_rect(fill = "white", color = NA),
+    panel.background  = element_rect(fill = "white", color = NA),
+    legend.background = element_rect(fill = "white", color = NA),
+    legend.key        = element_rect(fill = "white", color = NA)
+  )
+
+ggsave("/Users/danberle/Documents/projects/demographic_analysis/outputs/cbsa_fundamental_gap_positive.png", gap_pos_plot,
+       width = 12, height = 8, dpi = 300,
+       bg = "white",
+  device = ragg::agg_png)
+```
+
+```{r Export Econ DF}
+# Add Fundamental Gap to Final Table to export
+export_econ_df <- econ_df %>%
+  left_join(econ_gap %>% select(GEOID, fundamentals_gap), by = "GEOID")
+
+write_csv(export_econ_df, "/Users/danberle/Documents/projects/demographic_analysis/outputs/cbsa_econ_df.csv")
+```
+
+
+# *Final Recommendations*
+A summary table with the top 10 rankings and their core KPIs
+
+
+
+*Risk*
+We can add this later
+
+
+
+
+#Appendix
+Questions:
+- Why are some CBSAs missing from our growth data frame. For example: "17410" - Cleveland 
+- Let's go back and create rankings for Metro vs Micro Areas so we can split this better
+
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+

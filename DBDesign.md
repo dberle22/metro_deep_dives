@@ -166,6 +166,28 @@ These are important, but they should come after the base marts above are stable 
      - group-relative ranks
    - Add composite scores only after weights and included metrics are approved.
 
+*Advanced Score Matrix*
+
+This matrix summarizes the advanced composite scores discussed in `Gold Layer Design.docx`, the inputs they require, what we already have in Gold or adjacent pipeline work, and what still needs more source development.
+
+| Score | Main requirements | Available now | Available but not integrated | Requires more source work |
+| --- | --- | --- | --- | --- |
+| `affordability_score` | `rent_to_income`, `value_to_income`, rent burden, severe cost burden, FMR gap, RPP-adjusted income, vacancy context, optional Zillow price/rent context | `gold.housing_core_wide`, `gold.affordability_wide`, `gold.economics_income_wide`, BEA MARPP backfill logic | HUD CHAS staging for severe burden, Zillow staging for `zhvi` / `zori` | Silver/Gold CHAS transforms, Zillow Silver and Gold supplement, approved normalization and weighting |
+| `housing_market_overheating_index` | price/rent growth vs income growth, permit intensity, permit shortfall, vacancy trend, seasonality, population-demand context | housing, affordability, population, and income growth metrics in existing Gold marts; older prototype logic in `scripts/reference/overheat_gap_score copy.R` | Zillow staging, potential IRS migration context later | Zillow Silver/Gold, explicit permit shortfall logic, vacancy trend logic, seasonality metrics, approved scoring logic |
+| `economic_strength_index` | income per capita, real income / RPP, GDP per capita, real GDP growth, productivity, employment strength, unemployment trend | `gold.economics_income_wide`, `gold.economics_gdp_wide`, `gold.economics_labor_wide` | QCEW staging if we want employment-growth depth beyond LAUS | composite mart, approved weights, possible QCEW Silver if employment growth becomes a required pillar |
+| `industry_concentration_score` | sector shares, HHI / diversity / entropy, location quotients, optional employment-based sector structure | `gold.economics_industry_wide` already computes BEA real-GDP sector shares and `industry_concentration_hhi` | QCEW staging for sector employment shares | diversity / entropy outputs, location quotients, QCEW Silver and Gold if employment-based concentration is required |
+| `migration_attractiveness_score` | inflow, outflow, net migration, churn, source-market breadth, optional income / education quality of movers | ACS mobility and nativity in `gold.migration_wide` | IRS staging and partial Silver work | production-ready IRS Silver, CBSA rollups, attractiveness logic for origin breadth and mover quality |
+| `quality_of_life_index` | broadband / internet access, transit / commute quality, work-from-home, higher-ed presence, health outcomes, optional parks / hospitals | commute, transit, WFH, no-vehicle, and density context in `gold.transport_built_form_wide`; some ACS social infrastructure ingestion work exists | ACS social infrastructure pipeline, but broadband variables are not yet active in the current ingest | source decisions and ingestion for CHR, IPEDS, broadband, parks, hospitals, then Silver / Gold marts |
+| `risk_resilience_index` | FEMA NRI, flood risk, heat risk, sea-level-rise exposure, hazard exposure, optional resilience / adaptation measures | none in current Gold | none identified beyond design notes | net-new source pipelines for FEMA, NOAA, and any resilience overlays |
+| `investment_score` | governed combination of population, economy, affordability, overheating, migration, industry resilience, and risk | strong raw KPI base across population, housing, affordability, economy, migration, and industry Gold marts; older prototype in `scripts/reference/investment_index copy.R` | depends on future overheating, migration, quality-of-life, and risk layers | normalization mart, approved pillar weights, and completion of missing migration / quality-of-life / risk inputs |
+
+*Current Readiness Summary*
+
+- Can support a first-pass composite soon: `affordability_score`, `economic_strength_index`, and a basic `industry_concentration_score`
+- Can support a provisional composite once supplemental source work is wired in: `housing_market_overheating_index` and `migration_attractiveness_score`
+- Still blocked on major source-scope decisions and ingestion: `quality_of_life_index` and `risk_resilience_index`
+- Should remain downstream of all other score work: `investment_score`
+
 *Needs User Follow-Up*
 
 These are the design choices that should be confirmed before implementation or before finalizing Gold logic.

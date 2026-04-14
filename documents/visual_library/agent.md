@@ -30,7 +30,7 @@ Define the standard workflow between the `User` (prompter) and the `Agent` (Code
 ### 2. Draft details and specs
 - Owner: `Agent` with `User` confirmation
 - Action:
-  - Use [sample_library.md](/Users/danberle/Documents/projects/metro_deep_dive/documents/visual_library/sample_library.md) as the template style.
+  - Use [sample_library.md] as the template style.
   - Ask the User to paste existing chart details/specs if available.
   - If none exist, draft initial chart spec and review with User.
 - Output: Working chart spec (`<chart_type>_spec.md`) approved or marked for revision.

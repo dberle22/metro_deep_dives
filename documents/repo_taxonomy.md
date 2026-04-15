@@ -34,7 +34,7 @@ Primary locations:
 - `scripts/`
 - `schemas/`
 - `documents/database_design/`
-- `documents/visual_library/`
+- `visual_library/`
 
 Current state:
 - real but unevenly organized
@@ -191,7 +191,7 @@ Intent:
 - provide shared visual standards, chart contracts, and reusable chart code
 
 Where this belongs:
-- `documents/visual_library/`
+- `visual_library/`
 - `R/visual/`
 
 What exists already:
@@ -199,7 +199,7 @@ What exists already:
 - chart contract files
 - benchmark defaults and standards docs
 - initial visual helper code in `R/visual/`
-- chart-type directories under `documents/visual_library/charts/`
+- chart-type directories under `visual_library/charts/`
 
 Read of current state:
 - clearly intentional and already structured
@@ -368,7 +368,7 @@ To keep the repo understandable, documentation should be grouped by function:
   - `documents/database_design/`
   - `schemas/data_dictionary/`
 - shared visual standards:
-  - `documents/visual_library/`
+  - `visual_library/`
 - product-specific docs:
   - `notebooks/retail_opportunity_finder/documents/`
 - analysis-specific local docs:

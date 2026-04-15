@@ -1,6 +1,6 @@
 # Data contract standards and validators for visual artifacts.
 
-source("R/visual/chart_utils.R")
+source("visual_library/shared/chart_utils.R")
 
 visual_contracts <- list(
   line = list(

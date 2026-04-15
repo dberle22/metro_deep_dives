@@ -7,7 +7,7 @@ prep_scatter <- function(data,
   stopifnot(is.data.frame(data))
 
   if (!exists("visual_contracts", mode = "list")) {
-    source("R/visual/data_contracts.R")
+    source("visual_library/shared/data_contracts.R")
   }
 
   required <- visual_contracts$scatter$required_fields

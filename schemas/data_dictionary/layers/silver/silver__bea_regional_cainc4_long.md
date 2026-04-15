@@ -41,7 +41,8 @@
 - Primary/foreign keys are not enforced as DB constraints in current pipeline.
 
 ## Lineage
-- No explicit write reference found automatically; needs confirmation.
+1. **Creation/write references**:
+   - `scripts/etl/silver/bea_cainc4_silver.R:158:DBI::dbWriteTable(con, DBI::Id(schema="silver", table="bea_regional_cainc4_long"),`
 
 ## Known Gaps / To-Dos
 - Validate and harden grain/PK contracts with automated DQ checks.

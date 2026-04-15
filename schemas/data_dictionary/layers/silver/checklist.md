@@ -1,7 +1,7 @@
 # Silver Layer Coverage Checklist
 
 Schema: `silver`
-Table count: 48
+Table count: 50
 
 - [x] `acs_tx_school_metrics`
 - [x] `age_base`
@@ -39,6 +39,8 @@ Table count: 48
 - [x] `migration_kpi`
 - [x] `race_base`
 - [x] `race_kpi`
+- [x] `social_infra_base`
+- [x] `social_infra_kpi`
 - [x] `transport_base`
 - [x] `transport_kpi`
 - [x] `tx_tea_district_metrics`

@@ -44,3 +44,34 @@ if (file.exists(user_renv)) {
 
 # Make sure we're reading from the project Renviron
 if (file.exists(".Renviron")) readRenviron(".Renviron")
+
+
+# Reusable tract state scope helper
+resolve_tract_state_scope <- function(env_var = "ROF_TRACT_STATE_SCOPE") {
+  raw_value <- Sys.getenv(env_var, unset = "")
+  if (!nzchar(raw_value)) {
+    return(c(state.abb, "DC"))
+  }
+
+  states <- raw_value %>%
+    stringr::str_split(",") %>%
+    purrr::pluck(1) %>%
+    stringr::str_trim() %>%
+    toupper() %>%
+    unique()
+
+  valid_states <- c(state.abb, "DC")
+  invalid_states <- setdiff(states, valid_states)
+  if (length(invalid_states) > 0) {
+    stop(
+      sprintf(
+        "Invalid %s values: %s",
+        env_var,
+        paste(invalid_states, collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+
+  states
+}

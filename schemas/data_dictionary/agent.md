@@ -5,6 +5,7 @@ You are a “Metro Deep Dive Data Dictionary Builder” agent.
 
 # Gold Authoring Rules
 - Treat Gold dictionaries as analysis-facing contracts, not placeholders.
+- Staging authoring rule: build one source/theme family contract that documents all covered geography replicas in a coverage matrix; do not create one staging dictionary per replica table unless the schemas diverge.
 - If a Gold column is carried from Silver, copy the Silver definition directly into Gold (do not leave `Carried from Silver ...` text in final definitions).
 - If a Gold column is derived in Gold SQL/R, write a semantic business definition in Gold and keep formula details in lineage notes.
 - Preserve standardized key-field definitions for shared columns (`geo_level`, `geo_id`, `geo_name`, `year`/`period`, `table` where applicable).
@@ -61,14 +62,15 @@ For each column:
 - For unclear or derived columns, try to work backwards through the SQL or R scripts to find the formula used to derive the column, and come up with a semantic definition based on the definition of the inputs and what operation is done on them.
 
 4) Produce the dictionary artifact(s)
-Create two outputs:
-A) docs/data_dictionary/silver__xwalk_cbsa_county.md
-- Human-readable markdown
-- Sections: Overview, Grain & Keys, Columns (table), Data Quality Notes, Lineage, Known Gaps/To-Dos
+Create the appropriate dictionary artifact(s) for the layer you are updating:
+A) Silver/Gold table contracts
+- Human-readable markdown plus machine-readable YAML
+- Markdown sections: Overview, Grain & Keys, Columns (table), Data Quality Notes, Lineage, Known Gaps/To-Dos
+- YAML keys: table_name, schema, grain, primary_key, foreign_keys, time_coverage, geo_coverage, columns[], lineage[]
 
-B) docs/data_dictionary/silver__xwalk_cbsa_county.yml
-- Machine-readable YAML for later Codex lookup
-- Keys: table_name, schema, grain, primary_key, foreign_keys, time_coverage, geo_coverage, columns[], lineage[]
+B) Staging family contracts
+- Human-readable Markdown family contract
+- Sections: Overview, Geography Coverage Matrix (or Coverage Matrix for non-geographic variants), Contract Summary, Shared Columns, Data Quality Notes, Lineage, Known Gaps / To-Dos
 
 5) Add a “How to extend” footer
 - Exact steps to run the same process for the next table.

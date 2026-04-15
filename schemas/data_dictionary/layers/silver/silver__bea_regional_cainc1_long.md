@@ -37,7 +37,6 @@
 
 ## Lineage
 1. **Creation/write references**:
-   - `scripts/etl/silver/bea_cainc4_silver.R:158:DBI::dbWriteTable(con, DBI::Id(schema="silver", table="bea_regional_cainc1_long"),`
    - `scripts/etl/silver/bea_cainc1_silver.R:182:DBI::dbWriteTable(con, DBI::Id(schema="silver", table="bea_regional_cainc1_long"),`
 
 ## Known Gaps / To-Dos

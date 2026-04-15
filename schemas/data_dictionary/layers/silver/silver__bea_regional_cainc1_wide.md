@@ -37,7 +37,6 @@
    - `scripts/etl/gold/gold_economy_income.sql:58:from metro_deep_dive.silver.bea_regional_cainc1_wide cainc1`
    - `scripts/etl/gold/gold_economy_wide.sql:61:from metro_deep_dive.silver.bea_regional_cainc1_wide cainc1`
    - `scripts/etl/gold/gold_economy_wide.sql:269:from metro_deep_dive.silver.bea_regional_cainc1_wide inc`
-   - `scripts/etl/silver/bea_cainc4_silver.R:161:DBI::dbWriteTable(con, DBI::Id(schema="silver", table="bea_regional_cainc1_wide"),`
    - `scripts/etl/silver/bea_cainc1_silver.R:185:DBI::dbWriteTable(con, DBI::Id(schema="silver", table="bea_regional_cainc1_wide"),`
 2. **Downstream usage (examples)**:
    - `notebooks/national_analyses/real_personal_income/real_personal_income_analysis.Rmd:92:from metro_deep_dive.silver.bea_regional_cainc1_wide cainc`

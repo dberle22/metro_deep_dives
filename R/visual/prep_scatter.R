@@ -6,11 +6,11 @@ prep_scatter <- function(data,
                          drop_missing_xy = TRUE) {
   stopifnot(is.data.frame(data))
 
-  if (!exists("scatter_contract_standard", mode = "list")) {
+  if (!exists("visual_contracts", mode = "list")) {
     source("R/visual/data_contracts.R")
   }
 
-  required <- scatter_contract_standard$required_fields
+  required <- visual_contracts$scatter$required_fields
   missing <- setdiff(required, names(data))
   if (length(missing) > 0) {
     stop(paste("Missing required columns:", paste(missing, collapse = ", ")))

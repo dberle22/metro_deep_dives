@@ -1,14 +1,18 @@
-# Data Dictionary: staging BEA Metadata Group
+# Data Dictionary: staging BEA Metadata Family
 
 ## Overview
 - Schema: `staging`
-- Group: `BEA Metadata`
-- Tables in group: 2
-- Row count range across tables: 101 to 7,936
+- Family: `BEA Metadata`
+- Contract scope: source/theme family contract covering 2 materialized table(s) produced by [`scripts/etl/staging/get_bea.R`](../../../scripts/etl/staging/get_bea.R).
+- Documentation rule: geography-replica or variant tables listed in this family file are covered by this contract and should not receive standalone staging dictionaries unless their schema diverges materially.
 
-## Tables
-- `bea_regional_line_codes`
-- `bea_regional_tables`
+## Coverage Matrix
+This family is not replicated by a single geography ladder; the matrix below lists the materialized contract slices that roll into the same source/theme dictionary.
+
+| Coverage slice | Materialized table(s) | Notes |
+| --- | --- | --- |
+| Regional table registry | `bea_regional_tables` | Reference list of BEA regional tables discovered during ingest |
+| Regional line-code registry | `bea_regional_line_codes` | Reference list of BEA regional line codes used by downstream staging families |
 
 ## Contract Summary
 - This group has multiple contract variants across tables.
@@ -17,16 +21,17 @@
     - Tables: `bea_regional_tables`
   - Variant 2: 5 columns (1 table(s))
     - Tables: `bea_regional_line_codes`
+- Common key columns used across the family: `dataset`
 
 ## Shared Columns
 - `dataset`
 
 ## Lineage
-- scripts/etl/staging/get_bea.R (metadata generation at lines 52-79; script currently writes metadata to silver at lines 81-85)
+- The ingest script derives these metadata tables during parameter discovery and currently writes them to `silver`, even though they remain documented with the BEA staging family contracts.
 
 ## Data Quality Notes
-- Verify row uniqueness for the subgroup's natural grain keys before Silver transforms.
-- Validate expected time coverage and geography coverage for each table in the subgroup.
+- Verify row uniqueness for the family's natural grain keys before Silver transforms.
+- Validate expected time coverage and geography coverage against the coverage matrix in this document.
 - Track schema drift by comparing column count/signature against this document on each refresh.
 
 ## Known Gaps / To-Dos

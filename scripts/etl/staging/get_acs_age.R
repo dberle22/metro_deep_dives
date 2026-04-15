@@ -77,6 +77,8 @@ vars_age_sex <- c(
   pop_age_female_85_plus = "B01001_049"
 )
 
+tract_states <- resolve_tract_state_scope()
+
 # Ingest Data ----
 
 # US ----
@@ -185,7 +187,24 @@ dbWriteTable(con,
              place_acs_age_raw, 
              overwrite = TRUE)
 
-# Tract ----
+# Tract (all supported states) ----
+all_tract_acs_age_raw <- acs_ingest(
+  geography = "tract",
+  state = tract_states,
+  years     = 2012:2024,
+  variables = vars_age_sex,
+  survey    = "acs5",
+  output    = "wide"
+)
+
+# Name tables Source <> KPI <> Gran
+dbWriteTable(con, 
+             DBI::Id(schema = "staging", table = "acs_age_tract"),
+             all_tract_acs_age_raw, 
+             overwrite = TRUE)
+
+# Legacy: preserve existing state-level tract ingest tables for compatibility
+
 # FL
 tract_fl_acs_age_raw <- acs_ingest(
   geography = "tract",

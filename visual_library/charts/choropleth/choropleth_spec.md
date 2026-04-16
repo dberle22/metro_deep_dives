@@ -58,6 +58,7 @@
 - Use one geography layer per map.
 - Keep one time window per panel unless faceting.
 - Missing geometries and missing data must be explicit.
+- For national comparison maps, default to the contiguous 48 states plus DC unless the analytical question explicitly requires a broader footprint.
 
 ---
 
@@ -66,6 +67,10 @@
 - Join data to geometry.
 - Compute bins or benchmark deltas when relevant.
 - Decide and document the missing-data policy.
+- Choose a composition preset intentionally:
+- `national_compact` for single-panel contiguous-US review maps
+- `facet_national` for shared-extent multi-panel national comparisons
+- `local_focus` for metro/submetro maps fit tightly to the study area
 
 ---
 
@@ -80,12 +85,15 @@
 - Legend explains units or binning.
 - Missing data is labeled.
 - Source/vintage is included.
+- Subtitle wrapping should be handled in shared map defaults rather than ad hoc line breaks in chart runners.
+- Diverging benchmark maps should default to the shared stronger diverging palette unless a domain-specific override is justified.
 
 **Optional add-ons:**
 - Highlight outline
 - Context boundaries
 - Limited labels
 - Inset zoom
+- Shared base context layers such as US outline and state outlines should be available as toggles, especially for national CBSA and county maps.
 
 ---
 

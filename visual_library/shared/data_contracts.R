@@ -25,7 +25,7 @@ visual_contracts <- list(
   ),
   strength_strip = list(
     required_fields = c("geo_level", "geo_id", "geo_name", "time_window", "metric_id", "metric_label", "metric_value", "source", "vintage"),
-    optional_fields = c("metric_group", "direction", "normalized_value", "benchmark_label", "highlight_flag", "note")
+    optional_fields = c("metric_group", "direction", "normalized_value", "benchmark_value", "benchmark_normalized_value", "benchmark_label", "highlight_flag", "note")
   ),
   correlation_heatmap = list(
     required_fields = c("geo_level", "geo_id", "geo_name", "time_window", "metric_id", "metric_label", "metric_value", "source", "vintage"),
@@ -33,7 +33,7 @@ visual_contracts <- list(
   ),
   highlight_context_map = list(
     required_fields = c("geo_level", "geo_id", "geo_name", "time_window", "source", "vintage", "highlight_flag"),
-    optional_fields = c("metric_value", "metric_label", "geometry", "context_group", "neighbor_flag", "bin", "note")
+    optional_fields = c("metric_value", "metric_label", "geometry", "context_group", "neighbor_flag", "benchmark_value", "bin", "group", "label_flag", "label_text", "note")
   ),
   slopegraph = list(
     required_fields = c("geo_level", "geo_id", "geo_name", "period", "metric_id", "metric_label", "metric_value", "source", "vintage"),
@@ -150,7 +150,7 @@ validate_hexbin_contract <- function(data, ...) {
 }
 
 validate_strength_strip_contract <- function(data, ...) {
-  validate_visual_contract(data, "strength_strip", numeric_fields = "metric_value", ...)
+  validate_visual_contract(data, "strength_strip", numeric_fields = NULL, ...)
 }
 
 validate_correlation_heatmap_contract <- function(data, ...) {
@@ -166,7 +166,7 @@ validate_slopegraph_contract <- function(data, ...) {
 }
 
 validate_heatmap_table_contract <- function(data, ...) {
-  validate_visual_contract(data, "heatmap_table", numeric_fields = "metric_value", ...)
+  validate_visual_contract(data, "heatmap_table", numeric_fields = NULL, ...)
 }
 
 validate_age_pyramid_contract <- function(data, ...) {

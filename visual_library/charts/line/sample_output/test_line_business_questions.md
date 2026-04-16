@@ -11,9 +11,10 @@
 3. Indexed comparison: Are housing costs rising faster than incomes over time (base year = 2013)?
 
 ## Test Procedure
-1. Build sample data with `build_line_sample.sql`.
-2. Use `prep_line` in variant mode (`single`, `multi`, `indexed`).
-3. Render charts with `render_line` and include question text in subtitle.
+1. Build sample data with `sample_sql/build_line_sample.sql`.
+2. Run `test_line_render.R`, which queries DuckDB directly for each question.
+3. Use `prep_line` in variant mode (`single`, `multi`, `indexed`).
+4. Render charts with `render_line` and include question text in subtitle.
 4. Save PNG outputs in this folder.
 5. Verify period range, transform label, legend readability, and source/vintage caption.
 

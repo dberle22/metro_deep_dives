@@ -12,9 +12,9 @@ Build a web application where a user can ask natural language questions about US
 - the SQL used to answer the question
 - optional assumptions and metric definitions
 
-The application should sit on top of an existing Gold layer that normalizes sources such as ACS, BEA, BLS, and related public datasets into trusted analytical tables across multiple geographic grains.
+The application sits on top of the Metro Deep Dive DuckDB Gold layer.
 
-This should be positioned as a controlled analytics copilot rather than a fully open ended chat product. The product value comes from trustworthy answers, explainable SQL, and standardized visual outputs.
+This is a controlled analytics copilot rather than a fully open ended chat product. The product value comes from trustworthy answers, explainable SQL, and standardized visual outputs.
 
 ---
 

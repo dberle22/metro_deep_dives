@@ -28,6 +28,7 @@ We will outline data structure requirements, visual elements, and example questi
 - Highlight + Context Map
 - Slopegraph
 - Heatmap Table (geo x metric or geo x year)
+- Boxplots
 
 ### Deep Dive Specialists
 
@@ -792,6 +793,84 @@ How to read it: Scan across a row to see a geo’s profile; scan down a column t
 - For selected peer CBSAs, what does the full KPI profile look like in one scanable matrix?
 - For one metric (rent burden), which ZCTAs show persistent stress across 2015–2023?
 - Which metrics improved most in the target CBSA from 2013 to 2023 (metric × year heatmap)?
+
+### Boxplot (with optional Violin)
+
+#### 1) Visual Overview
+**What it’s for:** A distribution comparison chart that summarizes spread, central tendency, and outliers across groups. It is the most efficient way to answer “how does this metric vary across places?” and “where does a highlighted geo sit relative to the distribution?”  
+**Questions it answers:** What is the median and spread across groups? Are there long tails or extreme outliers? Do groups differ meaningfully (Region, Division, CBSA Type, peer set)? Where does the target geo land (above or below typical)?  
+**Best when:** Comparing distributions of a single metric across categories or cohorts, especially for ZCTA or county level metrics where variation is large.  
+**Not ideal when:** You need exact values for many entities (use ranked bars), you need the full distribution shape for precise tail behavior (use ridgeline or ECDF), or sample sizes are very small.
+
+#### 2) Variants (choose your “mode” first)
+- **Single-metric grouped boxplot:** default, compare groups (Region, Division, CBSA Type).
+- **Boxplot + highlighted point:** show the target geo as a point overlay (recommended default for narratives).
+- **Horizontal boxplot:** better for many groups or long labels.
+- **Violin + box overlay:** show full density shape plus summary statistics (use when distribution shape matters).
+- **Faceted boxplots:** compare multiple metrics using small multiples (limit metric count).
+- **Binned boxplots by time_window:** compare distributions across windows (2013–2023 vs 2018–2023).
+
+#### 3) Required Data Contract
+**Base grain:** 1 row per geo per snapshot/time_window for one metric (long/tidy).
+
+**Required fields:**
+- `geo_level`
+- `geo_id`
+- `geo_name`
+- `time_window` (or `period` if using years)
+- `metric_id`
+- `metric_label`
+- `metric_value` (numeric)
+- `source`
+- `vintage`
+
+**Optional fields (recommended):**
+- `group` (Region, Division, CBSA Type, State, peer set label)
+- `highlight_flag` (TRUE/FALSE)
+- `weight_value` (population/housing units) if you later want weighted summaries (optional, advanced)
+- `note` (suppressed, caveats)
+
+**Filters & assumptions:**
+- One `geo_level`, one `metric_id`, and one `time_window` per chart unless faceting.
+- Define the universe clearly (All CBSAs, counties within target state, ZCTAs within a CBSA).
+- Handle missing values explicitly (drop with stated rule or show missing count in subtitle/caption).
+
+**Pre-processing required:**
+- Decide outlier rule: default boxplot whiskers based on IQR; optionally clip extreme values for display only, with a note.
+- Optional: transform heavily skewed metrics (log) only when documented.
+
+#### 4) Visual Specs (Encoding + Elements + Add-ons)
+**Core encodings:**
+- X-axis = `group` (or `metric_label` if single group and multi-metric facet)
+- Y-axis = `metric_value`
+- Box shows median, IQR, whiskers; points beyond whiskers are outliers
+- Overlay point for `highlight_flag` if using narrative variant
+
+**Hard requirements:**
+- Title includes metric + universe and `geo_level`.
+- Subtitle includes `time_window`, grouping dimension, and any transforms (log).
+- Axis labels include units.
+- Source + vintage footnote.
+- Standard fonts/number formatting (per Standards).
+
+**Optional add-ons:**
+- Overlay highlight point and label (target geo).
+- Add jittered points for small N (to show raw distribution).
+- Order groups by median value for readability.
+- Add reference line for benchmark (US or peer average).
+- Switch to violin when shape matters and N is sufficient.
+
+#### 5) Interpretation + QA Notes
+**How to read it:** The line inside the box is the median; the box is the middle 50%; whiskers show typical range; outlier points show extremes. Compare medians and spreads across groups.  
+**Common pitfalls:** Over-interpreting outliers (data quality issues or small denominators), mixing universes without stating it, using too many groups with unreadable labels, skewed metrics that compress boxes.  
+**Quick QA checks:** Universe and grouping match subtitle; units correct; missing handling is explicit; highlight point matches intended geo; if groups ordered, ordering logic matches stated approach.
+
+#### 6) Example Question Bank
+- How does rent burden vary across regions, and where does the target CBSA fall?
+- For counties in the target CBSA, what is the distribution of median rent-to-income?
+- Within the target CBSA, do ZCTAs show a long tail of high commute intensity?
+- Are Sweet Spot markets outliers on affordability relative to all CBSAs?
+- How does the distribution of income growth differ by CBSA type (metro vs micro)?
 
 ## Deep Dive Specialists
 

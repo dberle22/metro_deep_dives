@@ -5,8 +5,8 @@ if (file.exists(".Renviron")) readRenviron(".Renviron")
 source("visual_library/shared/standards.R")
 source("visual_library/shared/data_contracts.R")
 source("visual_library/shared/scatter_query_helpers.R")
-source("visual_library/shared/prep_bar.R")
-source("visual_library/shared/render_bar.R")
+source("visual_library/shared/prep/prep_bar.R")
+source("visual_library/shared/render/render_bar.R")
 
 sql_string <- function(con, value) {
   as.character(DBI::dbQuoteString(con, value))

@@ -58,9 +58,9 @@ visual_palette_defaults <- function() {
       risk = "#C44536"
     ),
     diverging = list(
-      better = "#2B7A78",
-      midpoint = "#F7F7F7",
-      worse = "#C44536"
+      better = "#0C7C78",
+      midpoint = "#F7F7F5",
+      worse = "#D66A4E"
     ),
     quadrant = list(
       high_high = "#1D7F5F",
@@ -74,6 +74,11 @@ visual_palette_defaults <- function() {
       boundary = neutrals$outline,
       internal_boundary = neutrals$border,
       cluster = "#5F6C7B"
+    ),
+    comparison = list(
+      peers = c("#AEBECD", "#6E859E", "#8C9472", "#9A7F6B"),
+      neutral = neutrals$comparison_fill,
+      benchmark = neutrals$text_muted
     )
   )
 }
@@ -133,6 +138,113 @@ benchmark_style_defaults <- function(mode = "notebook") {
     text_face = "plain",
     label = isTRUE(mode_defaults$benchmark_labels_default)
   )
+}
+
+comparison_palette_defaults <- function() {
+  visual_palette_defaults()$comparison
+}
+
+map_extent_limits <- function(extent = c("data", "contiguous_us")) {
+  extent <- match.arg(extent)
+  switch(
+    extent,
+    data = list(xlim = NULL, ylim = NULL),
+    contiguous_us = list(xlim = c(-125, -66), ylim = c(24, 50))
+  )
+}
+
+build_map_context_layers <- function(us_outline = NULL,
+                                     state_outlines = NULL,
+                                     show_us_outline = TRUE,
+                                     show_state_outlines = TRUE,
+                                     us_outline_color = "#8FA1B3",
+                                     state_outline_color = "#C4CFD9",
+                                     us_outline_linewidth = 0.45,
+                                     state_outline_linewidth = 0.2) {
+  layers <- list()
+
+  if (isTRUE(show_us_outline) && inherits(us_outline, "sf")) {
+    layers <- c(layers, list(list(
+      data = us_outline,
+      fill = NA,
+      color = us_outline_color,
+      linewidth = us_outline_linewidth
+    )))
+  }
+
+  if (isTRUE(show_state_outlines) && inherits(state_outlines, "sf")) {
+    layers <- c(layers, list(list(
+      data = state_outlines,
+      fill = NA,
+      color = state_outline_color,
+      linewidth = state_outline_linewidth
+    )))
+  }
+
+  layers
+}
+
+resolve_map_composition_preset <- function(preset = NULL, data = NULL, config = list()) {
+  preset <- preset %||% "none"
+  if (identical(preset, "none")) {
+    return(list())
+  }
+
+  if (identical(preset, "national_compact")) {
+    return(list(
+      map_extent = "contiguous_us",
+      subtitle_wrap_width = 85,
+      caption_wrap_width = 110,
+      plot_margin = ggplot2::margin(8, 8, 8, 8),
+      border_linewidth = config$border_linewidth %||% 0.12
+    ))
+  }
+
+  if (identical(preset, "facet_national")) {
+    return(list(
+      map_extent = "contiguous_us",
+      subtitle_wrap_width = 80,
+      caption_wrap_width = 110,
+      plot_margin = ggplot2::margin(8, 8, 8, 8),
+      border_linewidth = config$border_linewidth %||% 0.14,
+      state_outline_linewidth = config$state_outline_linewidth %||% 0.18,
+      us_outline_linewidth = config$us_outline_linewidth %||% 0.4
+    ))
+  }
+
+  if (identical(preset, "local_focus")) {
+    if (!inherits(data, "sf") || !requireNamespace("sf", quietly = TRUE)) {
+      return(list(
+        map_extent = "data",
+        subtitle_wrap_width = 85,
+        caption_wrap_width = 110,
+        plot_margin = ggplot2::margin(8, 8, 8, 8)
+      ))
+    }
+
+    bbox <- sf::st_bbox(data)
+    pad_x <- as.numeric((bbox$xmax - bbox$xmin) * (config$local_padding_x %||% 0.04))
+    pad_y <- as.numeric((bbox$ymax - bbox$ymin) * (config$local_padding_y %||% 0.04))
+
+    return(list(
+      map_extent = "data",
+      xlim = c(bbox$xmin - pad_x, bbox$xmax + pad_x),
+      ylim = c(bbox$ymin - pad_y, bbox$ymax + pad_y),
+      subtitle_wrap_width = 85,
+      caption_wrap_width = 110,
+      plot_margin = ggplot2::margin(8, 8, 8, 8)
+    ))
+  }
+
+  stop(sprintf("Unknown map composition preset: %s", preset))
+}
+
+resolve_peer_palette <- function(n, palette = NULL) {
+  palette <- palette %||% comparison_palette_defaults()$peers
+  if (n <= length(palette)) {
+    return(palette[seq_len(n)])
+  }
+  grDevices::colorRampPalette(palette)(n)
 }
 
 visual_theme <- function(base_size = 12,
@@ -339,14 +451,16 @@ chart_default_config <- function(chart_type = NULL) {
     base_color = palettes$highlight$selection,
     highlight_color = palettes$highlight$selection,
     highlight_meaning = "selection",
-    neutral_color = neutrals$comparison_fill,
+    neutral_color = palettes$comparison$neutral,
+    peer_palette = palettes$comparison$peers,
+    series_palette = palettes$comparison$peers,
     missing_fill = neutrals$missing_fill,
     positive_fill = palettes$diverging$better,
     negative_fill = palettes$diverging$worse,
     diverging_low = palettes$diverging$worse,
     diverging_mid = palettes$diverging$midpoint,
     diverging_high = palettes$diverging$better,
-    benchmark_color = benchmark_style_defaults()$color,
+    benchmark_color = palettes$comparison$benchmark,
     benchmark_linetype = benchmark_style_defaults()$linetype,
     benchmark_linewidth = benchmark_style_defaults()$linewidth,
     benchmark_alpha = benchmark_style_defaults()$alpha,
@@ -357,10 +471,21 @@ chart_default_config <- function(chart_type = NULL) {
     label_max = NULL,
     title = NULL,
     subtitle = NULL,
+    subtitle_wrap_width = 120,
     y_label = NULL,
     caption_side_note = NULL,
     caption_footer_note = NULL,
-    caption_methodology_note = NULL
+    caption_methodology_note = NULL,
+    caption_wrap_width = 135,
+    composition_preset = "none",
+    plot_margin = ggplot2::margin(12, 16, 12, 12),
+    map_extent = "data",
+    show_us_outline = FALSE,
+    show_state_outlines = FALSE,
+    us_outline_color = "#8FA1B3",
+    state_outline_color = "#C4CFD9",
+    us_outline_linewidth = 0.45,
+    state_outline_linewidth = 0.2
   )
 
   chart_specific <- switch(
@@ -380,12 +505,52 @@ chart_default_config <- function(chart_type = NULL) {
       grid = "x",
       show_end_labels = TRUE
     ),
+    strength_strip = list(
+      grid = "x",
+      legend_position = "bottom",
+      highlight_meaning = "strength"
+    ),
+    correlation_heatmap = list(
+      tile_color = neutrals$background_white,
+      grid = "none",
+      label_box = FALSE,
+      subtitle_wrap_width = 105,
+      legend_position = "right",
+      cell_label_size = 3
+    ),
     heatmap_table = list(tile_color = neutrals$background_white, grid = "none"),
+    bump_chart = list(
+      grid = "both",
+      legend_position = "none",
+      show_points = TRUE,
+      show_endpoint_labels = TRUE,
+      label_mode = "highlight_or_all",
+      label_all_max_n = 12,
+      label_top_n = 8,
+      label_max_chars = 34,
+      label_include_value = FALSE,
+      label_style = "number",
+      label_accuracy = NULL,
+      comparison_linewidth = 0.75,
+      highlight_linewidth = 1.25,
+      comparison_alpha = 0.42,
+      peer_alpha = 0.6,
+      point_size = 1.6,
+      highlight_point_size = 2.1,
+      right_margin_pt = 138,
+      y_breaks = NULL,
+      x_breaks = NULL,
+      rank_band_n = NULL
+    ),
     map = list(
       na_fill = neutrals$missing_fill,
       legend_position = "right",
       label_box = FALSE,
-      grid = "none"
+      grid = "none",
+      subtitle_wrap_width = 95,
+      map_extent = "contiguous_us",
+      show_us_outline = TRUE,
+      show_state_outlines = TRUE
     ),
     list()
   )
@@ -451,6 +616,19 @@ apply_plot_labels <- function(plot,
                               side_note = NULL,
                               footer_note = NULL,
                               methodology_note = NULL) {
+  wrap_text <- function(text, width = 120) {
+    if (!is_nonempty_string(text) || is.null(width) || !is.finite(width) || width <= 0) {
+      return(text)
+    }
+    paste(strwrap(text, width = width), collapse = "\n")
+  }
+
+  cfg <- if (!is.null(data) && !is.null(attr(data, "chart_config"))) {
+    attr(data, "chart_config")
+  } else {
+    chart_default_config()
+  }
+
   if (is.null(caption)) {
     caption <- build_chart_notes(
       source = extract_chart_metadata(data, "source"),
@@ -462,11 +640,15 @@ apply_plot_labels <- function(plot,
   }
 
   plot + ggplot2::labs(
-    title = title,
-    subtitle = subtitle,
+    title = wrap_text(title, width = cfg$title_wrap_width %||% NULL),
+    subtitle = wrap_text(subtitle, width = cfg$subtitle_wrap_width %||% 120),
     x = x,
     y = y,
-    caption = if (is_nonempty_string(caption)) caption else NULL
+    caption = if (is_nonempty_string(caption)) {
+      wrap_text(caption, width = cfg$caption_wrap_width %||% 135)
+    } else {
+      NULL
+    }
   )
 }
 

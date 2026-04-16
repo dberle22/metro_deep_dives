@@ -558,6 +558,7 @@ Rules:
 - top metros can be labeled if it aids the story
 - state outlines should be visible but secondary
 - legends should clearly communicate quintiles, deciles, or ordered bins
+- default national comparison extent should be the contiguous 48 states plus DC unless a broader footprint is analytically necessary
 
 ## B. State or metro context maps
 Use for:
@@ -582,6 +583,25 @@ Rules:
 - boundaries third
 - water and contextual layers should support, not dominate
 - selected zones or shortlist areas should stand out immediately
+- framing should fit the study area tightly enough that the local pattern reads before labels or notes are added
+
+## C1. Shared Map Defaults
+- subtitle wrapping should be on by default for map-family charts
+- US outline and state outlines should be shared base-layer toggles, not ad hoc chart-local hacks
+- diverging choropleths should default to the stronger shared diverging palette so above/below-benchmark stories read clearly at presentation size
+
+## C2. Map Composition Presets
+- `national_compact`
+- use for single-panel contiguous-US county, CBSA, or state maps
+- applies a shared contiguous-US extent with tighter framing for reviewable national surfaces
+
+- `facet_national`
+- use for small-multiple national maps where all panels must keep the same extent and remain readable at reduced size
+- applies shared contiguous-US extent plus leaner framing and outline weights tuned for faceting
+
+- `local_focus`
+- use for metro, county-within-metro, tract, and future ZCTA maps
+- fits the frame to the study-area bbox with light padding for outlines, labels, and local context
 
 ## D. Boundary hierarchy
 Default hierarchy:
@@ -763,3 +783,9 @@ The next step is to translate this into the Core Function List and then chart-sp
 - Answer: Render a diagnostic placeholder panel and record the missing geometry dependency in chart-level docs instead of failing silently.
 - Status: Decided
 - Date: 2026-04-14
+
+### VS-011: Shared map composition defaults
+- Question: Which map-family layout and styling defaults should be standardized across choropleths and related maps?
+- Answer: Standardize subtitle wrapping, contiguous-US national extent, optional US/state outline base layers, a stronger diverging palette, and shared composition presets (`national_compact`, `facet_national`, `local_focus`) while keeping all of them configurable per chart.
+- Status: Decided
+- Date: 2026-04-15

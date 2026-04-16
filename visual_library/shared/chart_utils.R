@@ -65,6 +65,135 @@ compute_percentile <- function(x, higher_is_better = TRUE) {
   pct
 }
 
+rank_direction_flag <- function(direction = NULL, higher_is_better = NULL) {
+  if (!is.null(higher_is_better)) {
+    return(isTRUE(higher_is_better))
+  }
+  direction <- tolower(as.character(direction %||% "higher_is_better"))
+  !(direction %in% c("lower_is_better", "lower-better", "lower", "low_is_good", "low-good"))
+}
+
+compute_deterministic_ranks <- function(data,
+                                        value_col = "metric_value",
+                                        rank_col = "rank",
+                                        group_cols = NULL,
+                                        higher_is_better = TRUE,
+                                        rank_method = "row_number",
+                                        tie_cols = c("geo_name", "geo_id")) {
+  stopifnot(is.data.frame(data))
+  ensure_columns(data, value_col, chart_type = "rank helper")
+  rank_method <- match.arg(rank_method, c("row_number", "dense", "min"))
+
+  out <- data
+  out[[rank_col]] <- NA_real_
+
+  if (length(group_cols) > 0) {
+    ensure_columns(out, group_cols, chart_type = "rank helper")
+    group_key <- interaction(out[, group_cols, drop = FALSE], drop = TRUE, lex.order = TRUE)
+    groups <- split(seq_len(nrow(out)), group_key)
+  } else {
+    groups <- list(seq_len(nrow(out)))
+  }
+
+  for (idx in groups) {
+    values <- suppressWarnings(as.numeric(out[[value_col]][idx]))
+    finite <- is.finite(values)
+    if (!any(finite)) {
+      next
+    }
+
+    finite_idx <- idx[finite]
+    finite_values <- values[finite]
+    order_value <- if (isTRUE(higher_is_better)) -finite_values else finite_values
+    order_args <- list(order_value)
+    for (col in tie_cols) {
+      if (col %in% names(out)) {
+        order_args[[length(order_args) + 1]] <- as.character(out[[col]][finite_idx])
+      }
+    }
+    order_args$na.last <- TRUE
+    ord <- do.call(order, order_args)
+    ordered_idx <- finite_idx[ord]
+    ordered_values <- finite_values[ord]
+
+    if (identical(rank_method, "row_number")) {
+      out[[rank_col]][ordered_idx] <- seq_along(ordered_idx)
+    } else if (identical(rank_method, "min")) {
+      out[[rank_col]][ordered_idx] <- rank(
+        if (isTRUE(higher_is_better)) -ordered_values else ordered_values,
+        ties.method = "min",
+        na.last = "keep"
+      )
+    } else {
+      unique_values <- sort(unique(ordered_values), decreasing = isTRUE(higher_is_better))
+      out[[rank_col]][ordered_idx] <- match(ordered_values, unique_values)
+    }
+  }
+
+  out
+}
+
+rank_method_note <- function(rank_source = "derived",
+                             rank_method = "row_number",
+                             tie_cols = c("metric value", "geography name", "geography id")) {
+  if (!identical(rank_source, "derived")) {
+    return("Ranks use the precomputed rank field supplied by the data.")
+  }
+  if (identical(rank_method, "row_number")) {
+    return(paste0("Ties are broken deterministically by ", paste(tie_cols, collapse = ", "), "."))
+  }
+  paste0("Ties use ", rank_method, " ranking.")
+}
+
+endpoint_label_plan <- function(data,
+                                period_col = "period",
+                                label_mode = "highlight_or_all",
+                                highlight_col = "highlight_flag",
+                                rank_col = "rank",
+                                label_all_max_n = 12,
+                                label_top_n = 8,
+                                endpoint = c("end", "start")) {
+  # Placeholder shared policy for endpoint-label selection. Current callers can
+  # use it directly; future chart-specific helpers can wrap it for label text.
+  stopifnot(is.data.frame(data))
+  endpoint <- match.arg(endpoint)
+  ensure_columns(data, period_col, chart_type = "endpoint label helper")
+
+  periods <- sort(unique(stats::na.omit(data[[period_col]])))
+  if (length(periods) == 0) {
+    return(data[0, , drop = FALSE])
+  }
+  endpoint_period <- if (identical(endpoint, "start")) periods[[1]] else periods[[length(periods)]]
+  out <- data[data[[period_col]] == endpoint_period, , drop = FALSE]
+
+  if (highlight_col %in% names(out)) {
+    out[[highlight_col]] <- coerce_logical_column(out[[highlight_col]])
+  } else {
+    out[[highlight_col]] <- FALSE
+  }
+
+  if (identical(label_mode, "highlight")) {
+    return(out[out[[highlight_col]] %in% TRUE, , drop = FALSE])
+  }
+  if (identical(label_mode, "top_n") && rank_col %in% names(out)) {
+    out <- out[order(out[[rank_col]], out$geo_name %||% seq_len(nrow(out))), , drop = FALSE]
+    return(utils::head(out, label_top_n))
+  }
+  if (identical(label_mode, "all")) {
+    return(out)
+  }
+
+  has_highlight <- any(out[[highlight_col]] %in% TRUE, na.rm = TRUE)
+  if (has_highlight) {
+    return(out[out[[highlight_col]] %in% TRUE, , drop = FALSE])
+  }
+  if (nrow(out) > label_all_max_n && rank_col %in% names(out)) {
+    out <- out[order(out[[rank_col]], out$geo_name %||% seq_len(nrow(out))), , drop = FALSE]
+    return(utils::head(out, label_all_max_n))
+  }
+  out
+}
+
 default_chart_title <- function(chart_type, metric_label = NULL, geo_name = NULL) {
   parts <- c(metric_label, geo_name)
   parts <- parts[!is.na(parts) & nzchar(parts)]
@@ -390,16 +519,24 @@ annotation_note_label <- function(text,
 }
 
 chart_caption_from_config <- function(data = NULL, config = list(), caption = NULL) {
+  wrap_caption <- function(text, width = NULL) {
+    if (!is_nonempty_string(text) || is.null(width) || !is.finite(width) || width <= 0) {
+      return(text)
+    }
+    paste(strwrap(text, width = width), collapse = "\n")
+  }
+
   if (!is.null(caption)) {
-    return(caption)
+    cfg <- resolve_chart_config(config = config)
+    return(wrap_caption(caption, cfg$caption_wrap_width))
   }
 
   cfg <- resolve_chart_config(config = config)
-  build_chart_notes(
+  wrap_caption(build_chart_notes(
     source = extract_chart_metadata(data, "source"),
     vintage = extract_chart_metadata(data, "vintage"),
     side_note = cfg$caption_side_note,
     footer_note = cfg$caption_footer_note,
     methodology_note = cfg$caption_methodology_note
-  )
+  ), cfg$caption_wrap_width)
 }

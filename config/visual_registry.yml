@@ -1,5 +1,5 @@
 version: 1
-updated_on: 2026-04-14
+updated_on: 2026-04-16
 output_format_default: png
 
 charts:
@@ -146,3 +146,12 @@ charts:
     input_contract_id: proportional-symbol-map-v1
     output_filename: proportional-symbol-map-basic.png
     question_coverage_file: visual_library/charts/proportional_symbol_map/question_coverage.md
+
+  - chart_id: boxplot-basic
+    chart_type: boxplot
+    family: story-upgraders
+    priority: 17
+    status: validated
+    input_contract_id: boxplot-v1
+    output_filename: boxplot-basic.png
+    question_coverage_file: visual_library/charts/boxplot/question_coverage.md

@@ -36,10 +36,15 @@ state_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_age_state")
 county_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_age_county")
 place_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_age_place")
 zcta_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_age_zcta")
-tract_fl_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_age_tract_fl")
-tract_ga_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_age_tract_ga")
-tract_nc_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_age_tract_nc")
-tract_sc_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_age_tract_sc")
+
+## Commenting out old Tract Data
+# tract_fl_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_age_tract_fl")
+# tract_ga_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_age_tract_ga")
+# tract_nc_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_age_tract_nc")
+# tract_sc_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_age_tract_sc")
+
+## Tracts
+tract_all_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_age_tract")
 
 ## CBSA <> County Xwalk ----
 cbsa_county_xwalk <- dbGetQuery(con, "SELECT * FROM silver.xwalk_cbsa_county")
@@ -52,10 +57,13 @@ state_acs_clean   <- standardize_acs_df(state_acs_stage, "state")
 county_acs_clean  <- standardize_acs_df(county_acs_stage, "county")
 place_acs_clean   <- standardize_acs_df(place_acs_stage, "place")
 zcta_acs_clean    <- standardize_acs_df(zcta_acs_stage, "zcta")
-tract_nc_clean    <- standardize_acs_df(tract_nc_acs_stage, "tract")
-tract_fl_clean    <- standardize_acs_df(tract_fl_acs_stage, "tract")
-tract_ga_clean    <- standardize_acs_df(tract_ga_acs_stage, "tract")
-tract_sc_clean    <- standardize_acs_df(tract_sc_acs_stage, "tract")
+# tract_nc_clean    <- standardize_acs_df(tract_nc_acs_stage, "tract")
+# tract_fl_clean    <- standardize_acs_df(tract_fl_acs_stage, "tract")
+# tract_ga_clean    <- standardize_acs_df(tract_ga_acs_stage, "tract")
+# tract_sc_clean    <- standardize_acs_df(tract_sc_acs_stage, "tract")
+
+## Tracts
+tract_all_clean    <- standardize_acs_df(tract_all_acs_stage, "tract")
 
 # 4. Union our Data Frames together ----
 ## Rebase County Data to CBSA  ----
@@ -89,13 +97,14 @@ cbsa_acs_clean <- cbsa_pop %>%
   select(geo_level, geo_id = cbsa_code, geo_name = cbsa_name, year,
          pop_totalE, median_age.E, pop_male_totalE:pop_age_female_85_plusE)
 
-## Union Tracts together ----
-tract_all_clean <- dplyr::bind_rows(
-  tract_nc_clean,
-  tract_fl_clean,
-  tract_ga_clean,
-  tract_sc_clean,
-)
+## Union Tracts together (Deprecated )----
+  
+# tract_all_clean <- dplyr::bind_rows(
+#   tract_nc_clean,
+#   tract_fl_clean,
+#   tract_ga_clean,
+#   tract_sc_clean,
+# )
 
 ## Union all DFs together ----
 all_acs_clean <- dplyr::bind_rows(

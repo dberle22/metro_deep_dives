@@ -37,10 +37,14 @@ state_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_race_state")
 county_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_race_county")
 place_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_race_place")
 zcta_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_race_zcta")
-tract_fl_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_race_tract_fl")
-tract_ga_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_race_tract_ga")
-tract_nc_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_race_tract_nc")
-tract_sc_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_race_tract_sc")
+
+# Tracts
+tract_all_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_race_tract")
+
+# tract_fl_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_race_tract_fl")
+# tract_ga_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_race_tract_ga")
+# tract_nc_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_race_tract_nc")
+# tract_sc_acs_stage <- dbGetQuery(con, "SELECT * FROM staging.acs_race_tract_sc")
 
 ## CBSA <> County Xwalk ----
 cbsa_county_xwalk <- dbGetQuery(con, "SELECT * FROM silver.xwalk_cbsa_county")
@@ -53,10 +57,12 @@ state_acs_clean   <- standardize_acs_df(state_acs_stage, "state")
 county_acs_clean  <- standardize_acs_df(county_acs_stage, "county")
 place_acs_clean   <- standardize_acs_df(place_acs_stage, "place")
 zcta_acs_clean    <- standardize_acs_df(zcta_acs_stage, "zcta")
-tract_nc_clean    <- standardize_acs_df(tract_nc_acs_stage, "tract")
-tract_fl_clean    <- standardize_acs_df(tract_fl_acs_stage, "tract")
-tract_ga_clean    <- standardize_acs_df(tract_ga_acs_stage, "tract")
-tract_sc_clean    <- standardize_acs_df(tract_sc_acs_stage, "tract")
+tract_all_clean    <- standardize_acs_df(tract_all_acs_stage, "tract")
+
+# tract_nc_clean    <- standardize_acs_df(tract_nc_acs_stage, "tract")
+# tract_fl_clean    <- standardize_acs_df(tract_fl_acs_stage, "tract")
+# tract_ga_clean    <- standardize_acs_df(tract_ga_acs_stage, "tract")
+# tract_sc_clean    <- standardize_acs_df(tract_sc_acs_stage, "tract")
 
 # 4. Union our Data Frames together ----
 ## Create CBSA Rebase ----
@@ -85,12 +91,12 @@ cbsa_acs_clean <- cbsa_total %>%
          pop_total_b03002E:hispanic_anyE)
 
 ## Union Tracts together ---- 
-tract_all_clean <- dplyr::bind_rows(
-  tract_nc_clean,
-  tract_fl_clean,
-  tract_ga_clean,
-  tract_sc_clean
-)
+# tract_all_clean <- dplyr::bind_rows(
+#   tract_nc_clean,
+#   tract_fl_clean,
+#   tract_ga_clean,
+#   tract_sc_clean
+# )
 
 ## Union all DFs ----
 all_acs_clean <- dplyr::bind_rows(

@@ -12,7 +12,6 @@ select lower(geo_level) as geo_level,
 	year, 
 	pop_total
 from metro_deep_dive.silver.age_kpi 
-where lower(geo_level) in ('state', 'cbsa', 'county')
 ),
 
 acs_income as (
@@ -29,14 +28,19 @@ select lower(geo_level) as geo_level,
 	pct_hh_50k_100k,
 	pct_hh_100k_plus
 from metro_deep_dive.silver.income_kpi 
-where lower(geo_level) in ('state', 'cbsa', 'county')
 ),
 
 -- For GDP we need to select the correct variables
 	-- We're missing some Vars in Silver that we should check
 cagdp2 as (
-select geo_level,
-	geo_id,
+select lower(geo_level) as geo_level,
+	case
+		when lower(geo_level) = 'state'
+			and length(geo_id) = 5
+			and substr(geo_id, 3, 3) = '000'
+			then substr(geo_id, 1, 2)
+		else geo_id
+	end as geo_id,
 	geo_name,
 	period, 
 	gdp_total,
@@ -77,8 +81,14 @@ from metro_deep_dive.silver.bea_regional_cagdp2_wide
 
 -- Real GDP
 cagdp9 as (
-select geo_level,
-	geo_id,
+select lower(geo_level) as geo_level,
+	case
+		when lower(geo_level) = 'state'
+			and length(geo_id) = 5
+			and substr(geo_id, 3, 3) = '000'
+			then substr(geo_id, 1, 2)
+		else geo_id
+	end as geo_id,
 	geo_name,
 	period, 
 	real_gdp_total,
@@ -166,7 +176,7 @@ left join cagdp2
 left join cagdp9
 	on base.geo_id = cagdp9.geo_id
 	and base.year = cagdp9.period
-	and lower(base.geo_level) = lower(cagdp2.geo_level)
+	and lower(base.geo_level) = lower(cagdp9.geo_level)
 left join laus
 	on base.geo_id = laus.geo_id
 	and base.year = laus.period
@@ -244,5 +254,3 @@ select geo_level,
 	END AS productivity_cagr_5yr
 	
 from growthes
-
-

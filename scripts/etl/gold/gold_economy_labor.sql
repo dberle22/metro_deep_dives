@@ -12,7 +12,6 @@ select lower(geo_level) as geo_level,
 	age_15_17 + age_18_24 + age_25_34 + age_35_44 + age_45_54 + age_55_64 + age_65_74 + age_85p as working_age_pop
 	-- This needs to be updated to remove 15 year olds in the future
 from metro_deep_dive.silver.age_kpi 
-where lower(geo_level) in ('state', 'cbsa', 'county')
 ),
 
 laus as (

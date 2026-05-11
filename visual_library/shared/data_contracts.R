@@ -19,6 +19,10 @@ visual_contracts <- list(
     required_fields = c("geo_level", "geo_id", "geo_name", "time_window", "metric_value", "metric_label", "source", "vintage"),
     optional_fields = c("geometry", "bin", "benchmark_value", "highlight_flag", "group", "note")
   ),
+  boxplot = list(
+    required_fields = c("geo_level", "geo_id", "geo_name", "time_window", "metric_id", "metric_label", "metric_value", "source", "vintage"),
+    optional_fields = c("group", "highlight_flag", "label_flag", "weight_value", "benchmark_value", "note")
+  ),
   hexbin = list(
     required_fields = c("geo_level", "geo_id", "geo_name", "time_window", "x_value", "y_value", "x_label", "y_label", "source", "vintage"),
     optional_fields = c("group", "weight_value", "highlight_flag", "note")
@@ -145,6 +149,10 @@ validate_choropleth_contract <- function(data, ...) {
   validate_visual_contract(data, "choropleth", numeric_fields = "metric_value", ...)
 }
 
+validate_boxplot_contract <- function(data, ...) {
+  validate_visual_contract(data, "boxplot", numeric_fields = "metric_value", ...)
+}
+
 validate_hexbin_contract <- function(data, ...) {
   validate_visual_contract(data, "hexbin", numeric_fields = c("x_value", "y_value"), ...)
 }
@@ -178,7 +186,11 @@ validate_bump_chart_contract <- function(data, ...) {
 }
 
 validate_waterfall_contract <- function(data, ...) {
-  validate_visual_contract(data, "waterfall", numeric_fields = c("component_value", "component_delta"), ...)
+  numeric_fields <- "component_value"
+  if ("component_delta" %in% names(data) && any(!is.na(data$component_delta))) {
+    numeric_fields <- c(numeric_fields, "component_delta")
+  }
+  validate_visual_contract(data, "waterfall", numeric_fields = numeric_fields, ...)
 }
 
 validate_bivariate_choropleth_contract <- function(data, ...) {

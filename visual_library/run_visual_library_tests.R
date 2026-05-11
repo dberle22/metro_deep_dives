@@ -13,6 +13,8 @@ source("visual_library/shared/prep/prep_bar.R")
 source("visual_library/shared/render/render_bar.R")
 source("visual_library/shared/prep/prep_choropleth.R")
 source("visual_library/shared/render/render_choropleth.R")
+source("visual_library/shared/prep/prep_boxplot.R")
+source("visual_library/shared/render/render_boxplot.R")
 source("visual_library/shared/prep/prep_hexbin.R")
 source("visual_library/shared/render/render_hexbin.R")
 source("visual_library/shared/prep/prep_strength_strip.R")
@@ -80,6 +82,25 @@ build_scaffold_fixture <- function(chart_type) {
       metric_label = "Rent Burden",
       source = "visual_library_fixture",
       vintage = "2026-04-14",
+      stringsAsFactors = FALSE
+    ),
+    boxplot = data.frame(
+      geo_level = "cbsa",
+      geo_id = as.character(seq_len(24)),
+      geo_name = paste("Metro", seq_len(24)),
+      time_window = "2023",
+      metric_id = "rent_burden",
+      metric_label = "Rent Burden",
+      metric_value = c(
+        0.31, 0.34, 0.36, 0.38, 0.40, 0.42,
+        0.35, 0.37, 0.39, 0.41, 0.43, 0.45,
+        0.29, 0.32, 0.34, 0.36, 0.37, 0.39,
+        0.44, 0.46, 0.49, 0.51, 0.53, 0.57
+      ),
+      group = rep(c("Midwest", "Northeast", "South", "West"), each = 6),
+      highlight_flag = c(TRUE, rep(FALSE, 23)),
+      source = "visual_library_fixture",
+      vintage = "2026-04-16",
       stringsAsFactors = FALSE
     ),
     hexbin = data.frame(

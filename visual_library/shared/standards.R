@@ -505,6 +505,23 @@ chart_default_config <- function(chart_type = NULL) {
       grid = "x",
       show_end_labels = TRUE
     ),
+    boxplot = list(
+      flip = TRUE,
+      grid = "x",
+      legend_position = "none",
+      show_highlights = TRUE,
+      show_highlight_labels = TRUE,
+      show_jitter = FALSE,
+      order_groups = "median_desc",
+      box_width = 0.58,
+      box_alpha = 0.78,
+      point_alpha = 0.5,
+      outlier_alpha = 0.45,
+      outlier_size = 1.3,
+      jitter_width = 0.12,
+      subtitle_wrap_width = 105,
+      caption_wrap_width = 125
+    ),
     strength_strip = list(
       grid = "x",
       legend_position = "bottom",
@@ -541,6 +558,15 @@ chart_default_config <- function(chart_type = NULL) {
       y_breaks = NULL,
       x_breaks = NULL,
       rank_band_n = NULL
+    ),
+    waterfall = list(
+      grid = "y",
+      legend_position = "bottom",
+      label_box = FALSE,
+      positive_fill = palettes$diverging$better,
+      negative_fill = palettes$diverging$worse,
+      subtitle_wrap_width = 110,
+      caption_wrap_width = 125
     ),
     map = list(
       na_fill = neutrals$missing_fill,

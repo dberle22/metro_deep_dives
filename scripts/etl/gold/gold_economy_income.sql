@@ -123,7 +123,7 @@ left join cainc4
 	on base.geo_id = cainc4.geo_id
 	and base.year = cainc4.period
 	and lower(base.geo_level) = lower(cainc4.geo_level)
-where lower(base.geo_level) in ('state', 'cbsa', 'county')
+-- where lower(base.geo_level) in ('state', 'cbsa', 'county')
 -- Still need to add in RPP
 
 

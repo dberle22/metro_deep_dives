@@ -41,9 +41,9 @@ library(ragg)
 
 ```{r Load custom functions, include = FALSE}
 # Data Cleaning
-source("/Users/danberle/Documents/projects/real_estate_investment/functions/functions_data.R")
+source("projects/real_estate_investment/functions/functions_data.R")
 # Data Viz
-source("/Users/danberle/Documents/projects/real_estate_investment/functions/functions_viz.R")
+source("projects/real_estate_investment/functions/functions_viz.R")
 ```
 
 ```{r Create new functions, include = FALSE}
@@ -98,20 +98,20 @@ The main data we are using for this analysis and their sources are:
   
 ```{r Ingest}
 # Metro Metadata
-metro_metadata <- read_csv("/Users/danberle/Documents/projects/real_estate_investment/data/gold/cbsa/cbsa_metadata.csv") %>%
+metro_metadata <- read_csv("projects/real_estate_investment/data/gold/cbsa/cbsa_metadata.csv") %>%
   mutate(GEOID = as.character(GEOID))
 
 # ACS
-acs_silver <- read_csv("/Users/danberle/Documents/projects/real_estate_investment/data/silver/cbsa/acs_cbsa_5_year.csv")
+acs_silver <- read_csv("projects/real_estate_investment/data/silver/cbsa/acs_cbsa_5_year.csv")
 
 # BPS
-bps_silver <- read_csv("/Users/danberle/Documents/projects/real_estate_investment/data/silver/cbsa/bps_cbsa.csv")
+bps_silver <- read_csv("projects/real_estate_investment/data/silver/cbsa/bps_cbsa.csv")
 
 # GDP
-bea_silver <- read_csv("/Users/danberle/Documents/projects/real_estate_investment/data/silver/cbsa/bea_cbsa_gdp_summary.csv")
+bea_silver <- read_csv("projects/real_estate_investment/data/silver/cbsa/bea_cbsa_gdp_summary.csv")
 
 # BLS
-bls_silver <- read_csv("/Users/danberle/Documents/projects/real_estate_investment/data/silver/cbsa/bls_cbsa_unemployment.csv")
+bls_silver <- read_csv("projects/real_estate_investment/data/silver/cbsa/bls_cbsa_unemployment.csv")
 ```
 
 # Calculate KPIs
@@ -543,7 +543,7 @@ p_q_fixed <- p_q +
     legend.key        = element_rect(fill = "white", color = NA)
   )
 
-ggsave("/Users/danberle/Documents/projects/demographic_analysis/outputs/cbsa_growth_quintiles.png", p_q_fixed,
+ggsave("projects/demographic_analysis/outputs/cbsa_growth_quintiles.png", p_q_fixed,
        width = 12, height = 8, dpi = 300,
        bg = "white",
   device = ragg::agg_png)
@@ -605,7 +605,7 @@ p_bar_cont_fixed <- p_bar_cont +
     legend.key        = element_rect(fill = "white", color = NA)
   )
 
-ggsave("/Users/danberle/Documents/projects/demographic_analysis/outputs/cbsa_growth_top20_markets.png", p_bar_cont_fixed,
+ggsave("projects/demographic_analysis/outputs/cbsa_growth_top20_markets.png", p_bar_cont_fixed,
        width = 12, height = 8, dpi = 300,
        bg = "white",
   device = ragg::agg_png)
@@ -624,7 +624,7 @@ analysis_final_table <- analysis_shp_cbsa_growth_ranks %>%
          nat_rank_in_cbsa_type, reg_rank_in_cbsa_type, growth_q5_lbl) %>%
   mutate(unemployment_rate = unemployment_rate / 100)
 
-write_csv(analysis_final_table, "/Users/danberle/Documents/projects/demographic_analysis/outputs/south_cbsa_final_kpis.csv")
+write_csv(analysis_final_table, "projects/demographic_analysis/outputs/south_cbsa_final_kpis.csv")
 ```
 
 ```{r Publication Table}
@@ -672,7 +672,7 @@ gt_tbl
 ```
 
 ```{r Save the table}
-gt::gtsave(gt_tbl, "/Users/danberle/Documents/projects/demographic_analysis/outputs/top20_south_metro_metrics.png",
+gt::gtsave(gt_tbl, "projects/demographic_analysis/outputs/top20_south_metro_metrics.png",
            vwidth = 1400, vheight = 900, expand = 5, path = ".")
 ```
 
@@ -814,7 +814,7 @@ p_scatter <- p_scatter +
     legend.key        = element_rect(fill = "white", color = NA)
   )
 
-ggsave("/Users/danberle/Documents/projects/demographic_analysis/outputs/cbsa_growth_vs_housing_supply_scatter.png", p_scatter,
+ggsave("projects/demographic_analysis/outputs/cbsa_growth_vs_housing_supply_scatter.png", p_scatter,
        width = 12, height = 8, dpi = 300,
        bg = "white",
   device = ragg::agg_png)
@@ -933,7 +933,7 @@ p_vac <- p_vac +
     legend.key        = element_rect(fill = "white", color = NA)
   )
 
-ggsave("/Users/danberle/Documents/projects/demographic_analysis/outputs/cbsa_top_market_vacancy.png", p_vac,
+ggsave("projects/demographic_analysis/outputs/cbsa_top_market_vacancy.png", p_vac,
        width = 12, height = 8, dpi = 300,
        bg = "white",
   device = ragg::agg_png)
@@ -1029,7 +1029,7 @@ p_supply_gap <- p_supply_gap +
     legend.key        = element_rect(fill = "white", color = NA)
   )
 
-ggsave("/Users/danberle/Documents/projects/demographic_analysis/outputs/cbsa_top_supply_gap.png", p_supply_gap,
+ggsave("projects/demographic_analysis/outputs/cbsa_top_supply_gap.png", p_supply_gap,
        width = 12, height = 8, dpi = 300,
        bg = "white",
   device = ragg::agg_png)
@@ -1086,7 +1086,7 @@ p_vac <- p_vac +
     legend.key        = element_rect(fill = "white", color = NA)
   )
 
-ggsave("/Users/danberle/Documents/projects/demographic_analysis/outputs/cbsa_top_market_vacancy.png", p_vac,
+ggsave("projects/demographic_analysis/outputs/cbsa_top_market_vacancy.png", p_vac,
        width = 12, height = 8, dpi = 300,
        bg = "white",
   device = ragg::agg_png)
@@ -1218,7 +1218,7 @@ p_age <- p_age +
     legend.key        = element_rect(fill = "white", color = NA)
   )
 
-ggsave("/Users/danberle/Documents/projects/demographic_analysis/outputs/cbsa_top_vs_bottom_age.png", p_age,
+ggsave("projects/demographic_analysis/outputs/cbsa_top_vs_bottom_age.png", p_age,
        width = 12, height = 8, dpi = 300,
        bg = "white",
   device = ragg::agg_png)
@@ -1254,7 +1254,7 @@ p_edu <- p_edu +
     legend.key        = element_rect(fill = "white", color = NA)
   )
 
-ggsave("/Users/danberle/Documents/projects/demographic_analysis/outputs/cbsa_pop_growth_vs_education.png", p_edu,
+ggsave("projects/demographic_analysis/outputs/cbsa_pop_growth_vs_education.png", p_edu,
        width = 12, height = 8, dpi = 300,
        bg = "white",
   device = ragg::agg_png)
@@ -1307,7 +1307,7 @@ p_lfpr <- p_lfpr +
     legend.key        = element_rect(fill = "white", color = NA)
   )
 
-ggsave("/Users/danberle/Documents/projects/demographic_analysis/outputs/cbsa_lfpr_change.png", p_lfpr,
+ggsave("projects/demographic_analysis/outputs/cbsa_lfpr_change.png", p_lfpr,
        width = 12, height = 8, dpi = 300,
        bg = "white",
   device = ragg::agg_png)
@@ -1377,7 +1377,7 @@ p_gdp_v_pop_bubble <- p_gdp_v_pop_bubble +
     legend.key        = element_rect(fill = "white", color = NA)
   )
 
-ggsave("/Users/danberle/Documents/projects/demographic_analysis/outputs/cbsa_gdp_growth_vs_population.png", p_gdp_v_pop_bubble,
+ggsave("projects/demographic_analysis/outputs/cbsa_gdp_growth_vs_population.png", p_gdp_v_pop_bubble,
        width = 12, height = 8, dpi = 300,
        bg = "white",
   device = ragg::agg_png)
@@ -1445,7 +1445,7 @@ p_inc_v_pop_bubble <- p_inc_v_pop_bubble +
     legend.key        = element_rect(fill = "white", color = NA)
   )
 
-ggsave("/Users/danberle/Documents/projects/demographic_analysis/outputs/cbsa_income_growth_vs_population.png", p_inc_v_pop_bubble,
+ggsave("projects/demographic_analysis/outputs/cbsa_income_growth_vs_population.png", p_inc_v_pop_bubble,
        width = 12, height = 8, dpi = 300,
        bg = "white",
   device = ragg::agg_png)
@@ -1513,7 +1513,7 @@ p_inc_v_gdp_bubble <- p_inc_v_gdp_bubble +
     legend.key        = element_rect(fill = "white", color = NA)
   )
 
-ggsave("/Users/danberle/Documents/projects/demographic_analysis/outputs/cbsa_gdp_vs_income_growth.png", p_inc_v_gdp_bubble,
+ggsave("projects/demographic_analysis/outputs/cbsa_gdp_vs_income_growth.png", p_inc_v_gdp_bubble,
        width = 12, height = 8, dpi = 300,
        bg = "white",
   device = ragg::agg_png)
@@ -1569,7 +1569,7 @@ gap_neg_plot <- gap_neg_plot +
     legend.key        = element_rect(fill = "white", color = NA)
   )
 
-ggsave("/Users/danberle/Documents/projects/demographic_analysis/outputs/cbsa_fundamental_gap_negative.png", gap_neg_plot,
+ggsave("projects/demographic_analysis/outputs/cbsa_fundamental_gap_negative.png", gap_neg_plot,
        width = 12, height = 8, dpi = 300,
        bg = "white",
   device = ragg::agg_png)
@@ -1606,7 +1606,7 @@ gap_pos_plot <- gap_pos_plot +
     legend.key        = element_rect(fill = "white", color = NA)
   )
 
-ggsave("/Users/danberle/Documents/projects/demographic_analysis/outputs/cbsa_fundamental_gap_positive.png", gap_pos_plot,
+ggsave("projects/demographic_analysis/outputs/cbsa_fundamental_gap_positive.png", gap_pos_plot,
        width = 12, height = 8, dpi = 300,
        bg = "white",
   device = ragg::agg_png)
@@ -1617,7 +1617,7 @@ ggsave("/Users/danberle/Documents/projects/demographic_analysis/outputs/cbsa_fun
 export_econ_df <- econ_df %>%
   left_join(econ_gap %>% select(GEOID, fundamentals_gap), by = "GEOID")
 
-write_csv(export_econ_df, "/Users/danberle/Documents/projects/demographic_analysis/outputs/cbsa_econ_df.csv")
+write_csv(export_econ_df, "projects/demographic_analysis/outputs/cbsa_econ_df.csv")
 ```
 
 
@@ -1643,4 +1643,3 @@ Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by press
 When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
 
 The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
-

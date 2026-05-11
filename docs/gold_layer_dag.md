@@ -123,7 +123,7 @@ Recommended cleanup: rename it to an archive path such as `scripts/etl/gold/arch
 
 ## Current Live Tract Snapshot
 
-Live DuckDB check from `/Users/danberle/Documents/projects/data/duckdb/metro_deep_dive.duckdb`:
+Live DuckDB check from `projects/data/duckdb/metro_deep_dive.duckdb`:
 
 | Gold table | Tract rows | Distinct tracts | Years | Interpretation |
 | --- | ---: | ---: | --- | --- |

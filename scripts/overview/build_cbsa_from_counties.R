@@ -164,7 +164,7 @@ cbsa_const_long %>% dplyr::slice_head(n = 5)
 cbsa_const_latest %>% dplyr::slice_head(n = 5)
 
 # Write to Data Folder ----
-write_csv(cbsa_const_long, "/Users/danberle/Documents/projects/metro_deep_dive/data/gold/overview_cbsa_constant_long.csv")
-write_csv(cbsa_const_latest, "/Users/danberle/Documents/projects/metro_deep_dive/data/gold/overview_cbsa_constant_latest.csv")
+write_csv(cbsa_const_long, "projects/metro_deep_dive/data/gold/overview_cbsa_constant_long.csv")
+write_csv(cbsa_const_latest, "projects/metro_deep_dive/data/gold/overview_cbsa_constant_latest.csv")
 
 # Go back to Notebook and recalculate benchmarks

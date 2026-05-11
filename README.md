@@ -2,7 +2,7 @@
 
 This repository contains a modular R workflow for producing metro-level deep dive analyses. The project splits data preparation, metrics, plotting, and reporting into reusable components that can be orchestrated from parameterised scripts.
 
-For a current-state explanation of what this repo contains, how the major workstreams fit together, and what already exists versus future-state goals, see [documents/repo_taxonomy.md](/Users/danberle/Documents/projects/metro_deep_dive/documents/repo_taxonomy.md).
+For a current-state explanation of what this repo contains, how the major workstreams fit together, and what already exists versus future-state goals, see [documents/repo_taxonomy.md](projects/metro_deep_dive/documents/repo_taxonomy.md).
 
 ## Repository Structure
 

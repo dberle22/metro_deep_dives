@@ -1054,7 +1054,7 @@ That gives us a clean first vertical slice where tract scoring and zone systems 
 Use the following prompt to start a fresh implementation agent:
 
 ```text
-You are continuing the Retail Opportunity Finder V2 architecture refactor in `/Users/danberle/Documents/projects/metro_deep_dive`.
+You are continuing the Retail Opportunity Finder V2 architecture refactor in `projects/metro_deep_dive`.
 
 Start by reading these documents for context:
 - `notebooks/retail_opportunity_finder/documents/plans/retail_opportunity_finder_v2_architecture_review.md`
